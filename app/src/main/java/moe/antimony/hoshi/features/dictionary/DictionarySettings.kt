@@ -57,7 +57,7 @@ enum class DictionaryUpdateInterval(
 }
 
 data class DictionarySettings(
-    val autoUpdateDictionaries: Boolean = true,
+    val autoUpdateDictionaries: Boolean = false,
     val dictionaryUpdateInterval: DictionaryUpdateInterval = DictionaryUpdateInterval.Weekly,
     val lastDictionaryUpdateEpochMillis: Long? = null,
     val dictionaryTabDefault: Boolean = false,
@@ -96,7 +96,7 @@ class DictionarySettingsStore(context: Context) : DictionarySettingsLegacySource
     private val preferences = context.getSharedPreferences("dictionary-settings", Context.MODE_PRIVATE)
 
     override fun load(): DictionarySettings = DictionarySettings(
-        autoUpdateDictionaries = preferences.getBoolean(KEY_AUTO_UPDATE_DICTIONARIES, true),
+        autoUpdateDictionaries = preferences.getBoolean(KEY_AUTO_UPDATE_DICTIONARIES, false),
         dictionaryUpdateInterval = DictionaryUpdateInterval.fromRawValue(
             preferences.getString(KEY_DICTIONARY_UPDATE_INTERVAL, null),
         ) ?: DictionaryUpdateInterval.Weekly,
@@ -289,7 +289,7 @@ class DictionarySettingsRepository(
     private fun Preferences.toDictionarySettings(): DictionarySettings {
         val legacyCollapseDictionaries = this[KEY_COLLAPSE_DICTIONARIES]
         return DictionarySettings(
-            autoUpdateDictionaries = this[KEY_AUTO_UPDATE_DICTIONARIES] ?: true,
+            autoUpdateDictionaries = this[KEY_AUTO_UPDATE_DICTIONARIES] ?: false,
             dictionaryUpdateInterval = DictionaryUpdateInterval.fromRawValue(this[KEY_DICTIONARY_UPDATE_INTERVAL])
                 ?: DictionaryUpdateInterval.Weekly,
             lastDictionaryUpdateEpochMillis = this[KEY_LAST_DICTIONARY_UPDATE_EPOCH_MILLIS],
