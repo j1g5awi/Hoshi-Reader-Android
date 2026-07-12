@@ -12,7 +12,12 @@ internal data class ReaderSasayakiMediaStop(
 
 internal enum class ReaderNavigationDirection(val jsValue: String) {
     Forward("forward"),
-    Backward("backward"),
+    Backward("backward");
+
+    fun opposite(): ReaderNavigationDirection = when (this) {
+        Forward -> Backward
+        Backward -> Forward
+    }
 }
 
 internal enum class ReaderNavigationResult {

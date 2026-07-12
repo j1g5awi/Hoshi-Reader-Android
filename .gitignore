@@ -11,4 +11,5 @@ local.properties
 /testdata
 .codex/
 /.superpowers/
+/.kotlin/
 /docs/superpowers/

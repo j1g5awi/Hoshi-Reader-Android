@@ -298,6 +298,8 @@
     <string name="reader_behavior_lock_current_orientation">锁定当前屏幕方向</string>
     <string name="reader_behavior_open_last_read_book_on_launch">启动时打开最近阅读</string>
     <string name="reader_behavior_auto_check_updates">自动检查更新</string>
+    <string name="reader_behavior_tap_zones_to_turn_pages">点击两侧翻页</string>
+    <string name="reader_behavior_reverse_swipe_direction">竖排滑动反转</string>
     <string name="reader_statistics_pause">暂停统计</string>
     <string name="reader_statistics_start">开始统计</string>
     <string name="reader_jump_back">返回上一个跳转位置</string>

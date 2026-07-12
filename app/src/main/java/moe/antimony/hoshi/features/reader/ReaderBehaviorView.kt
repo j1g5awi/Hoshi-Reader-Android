@@ -57,6 +57,22 @@ fun ReaderBehaviorScreen(
                             onSettingsChange(settings.copy(volumeKeysTurnPages = it))
                         },
                     )
+                    BehaviorDivider()
+                    BehaviorSwitchRow(
+                        label = stringResource(ReaderBehaviorRow.TapZonesToTurnPages.labelRes),
+                        checked = settings.tapZonesToTurnPages,
+                        onCheckedChange = {
+                            onSettingsChange(settings.copy(tapZonesToTurnPages = it))
+                        },
+                    )
+                    BehaviorDivider()
+                    BehaviorSwitchRow(
+                        label = stringResource(ReaderBehaviorRow.ReverseSwipeDirection.labelRes),
+                        checked = settings.reverseSwipeDirection,
+                        onCheckedChange = {
+                            onSettingsChange(settings.copy(reverseSwipeDirection = it))
+                        },
+                    )
                     readerBehaviorSasayakiRows().forEach { labelRes ->
                         BehaviorDivider()
                         BehaviorSwitchRow(
@@ -130,8 +146,10 @@ internal fun readerBehaviorRows(): List<Int> = ReaderBehaviorRow.entries.map { i
 
 private enum class ReaderBehaviorRow(val labelRes: Int) {
     VolumeKeysTurnPages(R.string.reader_behavior_volume_keys_turn_pages),
+    TapZonesToTurnPages(R.string.reader_behavior_tap_zones_to_turn_pages),
     VolumeKeysSeekSasayaki(R.string.reader_behavior_volume_keys_seek_sasayaki),
     ReverseVolumeKeyDirection(R.string.reader_behavior_reverse_volume_key_direction),
+    ReverseSwipeDirection(R.string.reader_behavior_reverse_swipe_direction),
     KeepScreenOn(R.string.reader_behavior_keep_screen_on),
     LockCurrentOrientation(R.string.reader_behavior_lock_current_orientation),
     OpenLastReadBookOnLaunch(R.string.reader_behavior_open_last_read_book_on_launch),

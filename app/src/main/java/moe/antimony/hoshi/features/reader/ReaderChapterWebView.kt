@@ -298,13 +298,43 @@ internal fun ChapterWebView(
                     y = androidPixelsToCssPixels(event.y, density).toDouble(),
                 )
             }
+            fun navigatePageForReaderTap(tapSide: ReaderTapSide) {
+                currentOnReaderInteraction.value()
+                currentOnClearLookupPopup.value()
+                val direction = readerNavigationDirectionForTap(
+                    isVerticalWriting = readerSettings.verticalWriting,
+                    tapSide = tapSide,
+                )
+                webView.navigatePageForDirection(
+                    direction = direction,
+                    onNextChapter = currentOnNextChapter.value,
+                    onPreviousChapter = currentOnPreviousChapter.value,
+                    onDisplayedProgress = currentOnDisplayProgress.value,
+                    onSaveProgress = currentOnSaveBookmark.value,
+                )
+            }
+            fun readerTapZoneAction(
+                x: Float,
+                viewWidth: Int,
+                onBlankTap: () -> Unit,
+            ) {
+                if (currentReaderPopupFrames.value.isNotEmpty() || !readerSettings.tapZonesToTurnPages) {
+                    onBlankTap()
+                    return
+                }
+                when {
+                    x < viewWidth / 4f -> navigatePageForReaderTap(ReaderTapSide.Left)
+                    x > 3f * viewWidth / 4f -> navigatePageForReaderTap(ReaderTapSide.Right)
+                    else -> onBlankTap()
+                }
+            }
             when (readerSettings.viewMode) {
                 ReaderViewMode.Continuous -> {
                     webView.setOnTouchListener(
                         ContinuousScrollTouchListener(
                             settings = readerSettings,
                             shouldIgnoreReaderGesture = ::shouldIgnoreReaderGestureEvent,
-                            onTap = { x, y -> selectAt(x, y) { currentOnReaderTapOutside.value() } },
+                            onTap = { x, y -> selectAt(x, y) { readerTapZoneAction(x, webView.width) { currentOnReaderTapOutside.value() } } },
                             onScrollGesture = currentOnReaderInteraction.value,
                             onNextChapter = {
                                 currentOnReaderInteraction.value()
@@ -390,7 +420,7 @@ internal fun ChapterWebView(
                                         onSaveProgress = currentOnSaveBookmark.value,
                                     )
                                 } else {
-                                    currentOnReaderTapOutside.value()
+                                    readerTapZoneAction(x, webView.width) { currentOnReaderTapOutside.value() }
                                 }
                             }
                         }
@@ -398,10 +428,7 @@ internal fun ChapterWebView(
                         override fun onLeftSwipe() {
                             currentOnReaderInteraction.value()
                             currentOnClearLookupPopup.value()
-                            val direction = readerNavigationDirectionForSwipe(
-                                isVerticalWriting = readerSettings.verticalWriting,
-                                swipeDirection = ReaderSwipeDirection.Left,
-                            )
+                            val direction = readerNavigationDirectionForSwipe(readerSettings.verticalWriting, ReaderSwipeDirection.Left, readerSettings.reverseSwipeDirection)
                             webView.navigatePageForDirection(
                                 direction = direction,
                                 onNextChapter = currentOnNextChapter.value,
@@ -414,10 +441,7 @@ internal fun ChapterWebView(
                         override fun onRightSwipe() {
                             currentOnReaderInteraction.value()
                             currentOnClearLookupPopup.value()
-                            val direction = readerNavigationDirectionForSwipe(
-                                isVerticalWriting = readerSettings.verticalWriting,
-                                swipeDirection = ReaderSwipeDirection.Right,
-                            )
+                            val direction = readerNavigationDirectionForSwipe(readerSettings.verticalWriting, ReaderSwipeDirection.Right, readerSettings.reverseSwipeDirection)
                             webView.navigatePageForDirection(
                                 direction = direction,
                                 onNextChapter = currentOnNextChapter.value,

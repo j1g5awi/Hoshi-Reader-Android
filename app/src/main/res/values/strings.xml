@@ -300,6 +300,8 @@
     <string name="reader_behavior_lock_current_orientation">Lock Current Orientation</string>
     <string name="reader_behavior_open_last_read_book_on_launch">Open Last Read Book on Launch</string>
     <string name="reader_behavior_auto_check_updates">Automatically Check for Updates</string>
+    <string name="reader_behavior_tap_zones_to_turn_pages">Tap Sides to Turn Pages</string>
+    <string name="reader_behavior_reverse_swipe_direction">Reverse Vertical Swipe</string>
     <string name="reader_statistics_pause">Pause statistics</string>
     <string name="reader_statistics_start">Start statistics</string>
     <string name="reader_jump_back">Return to previous jump position</string>
