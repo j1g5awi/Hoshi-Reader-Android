@@ -14,7 +14,6 @@ import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
-import androidx.media3.transformer.FrameworkMuxer
 import androidx.media3.transformer.Transformer
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -53,7 +52,9 @@ internal class SasayakiCueAudioExporter(
                     val transformer = Transformer.Builder(appContext)
                         .setLooper(exportThread.looper)
                         .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                        .setMuxerFactory(FrameworkMuxer.Factory())
+                        // Use Transformer's default muxer (DefaultMuxer -> InAppMp4Muxer,
+                        // pure Java). FrameworkMuxer natively crashes (SIGABRT in stopMuxer)
+                        // on devices with a buggy Android media stack (e.g. BOOX Android 11).
                         .addListener(
                             object : Transformer.Listener {
                                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
@@ -133,12 +134,16 @@ internal class SasayakiCueAudioExporter(
         get() = (startTime * 1000.0).toLong().coerceAtLeast(0L)
 
     private val SasayakiCueAudioRange.endPositionMs: Long
-        get() = (endTime * 1000.0).toLong().coerceAtLeast(startPositionMs + 1L)
+        get() = (endTime * 1000.0).toLong() + EndClipMarginMs
 
     private fun outputFileName(cue: SasayakiMatch): String =
         "hoshi_sasayaki_${cue.id.hashCode().toLong().and(0xffffffffL)}.aac"
 
     private companion object {
         const val ExportTimeoutMs = 30_000L
+        // AnkiDroid's player estimates a shorter duration for ADTS AAC and
+        // truncates the tail (~500ms on this device). Extend the clip end by
+        // this margin so truncation cuts padding instead of the sentence content.
+        const val EndClipMarginMs = 500L
     }
 }
