@@ -148,11 +148,58 @@ class BookRepository private constructor(
         loadSasayakiPlayback(bookRoot)?.audioUri?.let { uri ->
             runCatching { releasePersistedSasayakiAudioUri(uri) }
         }
+        runCatching { saveOrphanedStatistics(bookRoot, removedId) }
         fileDataSource.deleteBook(bookRoot)
         val cleanedShelves = loadShelves().map { shelf ->
             shelf.copy(bookIds = shelf.bookIds.filterNot { it == removedId })
         }
         saveShelves(cleanedShelves)
+    }
+
+    private suspend fun saveOrphanedStatistics(bookRoot: File, bookId: String) {
+        val statistics = sidecarDataSource.loadStatistics(bookRoot) ?: return
+        if (statistics.isEmpty()) return
+        val metadata = loadMetadata(bookRoot)
+        val title = metadata?.displayTitle?.ifBlank { null } ?: bookRoot.name
+        val orphaned = OrphanedBookStatistics(bookId = bookId, title = title, statistics = statistics)
+        val orphanedFile = filesDir.resolve(ORPHANED_STATISTICS_FILE_NAME)
+        val existing = withContext(ioDispatcher) {
+            if (orphanedFile.isFile) {
+                runCatching {
+                    sidecarDataSource.json.decodeFromString(
+                        ListSerializer(OrphanedBookStatistics.serializer()),
+                        orphanedFile.readText(),
+                    ).toMutableList()
+                }.getOrElse { mutableListOf() }
+            } else {
+                mutableListOf()
+            }
+        }
+        val index = existing.indexOfFirst { it.bookId == bookId }
+        if (index >= 0) {
+            existing[index] = orphaned
+        } else {
+            existing.add(orphaned)
+        }
+        withContext(ioDispatcher) {
+            orphanedFile.writeText(
+                sidecarDataSource.json.encodeToString(
+                    ListSerializer(OrphanedBookStatistics.serializer()),
+                    existing,
+                ),
+            )
+        }
+    }
+
+    suspend fun loadOrphanedStatistics(): List<OrphanedBookStatistics> = withContext(ioDispatcher) {
+        val orphanedFile = filesDir.resolve(ORPHANED_STATISTICS_FILE_NAME)
+        if (!orphanedFile.isFile) return@withContext emptyList()
+        runCatching {
+            sidecarDataSource.json.decodeFromString(
+                ListSerializer(OrphanedBookStatistics.serializer()),
+                orphanedFile.readText(),
+            )
+        }.getOrElse { emptyList() }
     }
 
     suspend fun loadShelves(): List<BookShelf> =
@@ -601,7 +648,7 @@ class BookSidecarDataSource(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     @OptIn(ExperimentalSerializationApi::class)
-    private val json = Json {
+    internal val json = Json {
         prettyPrint = true
         prettyPrintIndent = "    "
         encodeDefaults = true
@@ -702,6 +749,7 @@ private const val SASAYAKI_MATCH_FILE_NAME = "sasayaki_match.json"
 private const val SASAYAKI_PLAYBACK_FILE_NAME = "sasayaki_playback.json"
 private const val SASAYAKI_DIRECTORY_NAME = "Sasayaki"
 private const val APPLE_REFERENCE_EPOCH_SECONDS = 978_307_200.0
+private const val ORPHANED_STATISTICS_FILE_NAME = "orphaned_statistics.json"
 
 private val bookSidecarFileNames = setOf(
     METADATA_FILE_NAME,

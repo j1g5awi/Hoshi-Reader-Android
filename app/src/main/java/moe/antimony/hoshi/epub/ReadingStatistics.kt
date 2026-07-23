@@ -3,6 +3,13 @@ package moe.antimony.hoshi.epub
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class OrphanedBookStatistics(
+    val bookId: String,
+    val title: String,
+    val statistics: List<ReadingStatistics>,
+)
+
+@Serializable
 data class ReadingStatistics(
     val title: String,
     val dateKey: String,

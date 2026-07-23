@@ -65,6 +65,21 @@ internal class AndroidStatisticsRepository @Inject constructor(
                 )
             }
         }
+        bookRepository.loadOrphanedStatistics().forEach { orphaned ->
+            orphaned.statistics.forEach { statistic ->
+                val date = statistic.dateKey.toLocalDateOrNull() ?: return@forEach
+                if (statistic.charactersRead <= 0 && statistic.readingTime <= 0.0) {
+                    return@forEach
+                }
+                contributionsByDate.getOrPut(date) { mutableListOf() } += StatisticsBookContribution(
+                    bookId = orphaned.bookId,
+                    title = orphaned.title.ifBlank { statistic.title.ifBlank { orphaned.bookId } },
+                    coverPath = null,
+                    characters = statistic.charactersRead,
+                    readingSeconds = statistic.readingTime,
+                )
+            }
+        }
         val days = contributionsByDate
             .toSortedMap()
             .map { (date, contributions) ->
