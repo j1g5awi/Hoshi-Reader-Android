@@ -139,6 +139,11 @@ android {
             version = "3.22.1"
         }
     }
+    defaultConfig.externalNativeBuild {
+        cmake {
+            targets += listOf("hoshidicts_jni", "word_audio_jni")
+        }
+    }
     sourceSets["main"].java.directories.add(uniffiOutDir.absolutePath)
     sourceSets["debug"].jniLibs.directories.add(rustDebugJniLibsDir.absolutePath)
     sourceSets["release"].jniLibs.directories.add(rustReleaseJniLibsDir.absolutePath)

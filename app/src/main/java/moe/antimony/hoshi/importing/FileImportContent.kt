@@ -56,6 +56,7 @@ private fun createImportIntent(mimeTypes: Array<String>, allowMultiple: Boolean)
         .putExtra(Intent.EXTRA_MIME_TYPES, requestedMimeTypes)
         .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        .addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
 }
 
 private fun createOpenDocumentIntent(mimeTypes: Array<String>): Intent {

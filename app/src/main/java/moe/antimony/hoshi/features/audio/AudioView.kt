@@ -1,5 +1,6 @@
 package moe.antimony.hoshi.features.audio
 
+import android.content.Intent
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,7 +69,7 @@ import moe.antimony.hoshi.importing.localizedImportMessage
 import moe.antimony.hoshi.ui.hoshiSingleLineTextFieldLineLimits
 import moe.antimony.hoshi.ui.hoshiTextFieldCursorBrush
 import moe.antimony.hoshi.ui.rememberSyncedTextFieldState
-import moe.antimony.hoshi.ui.HoshiBlockingProgressOverlay
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +87,7 @@ fun AudioSettingsView(
     var urlInput by remember { mutableStateOf("") }
     var importedSize by remember { mutableStateOf(repository.databaseSizeBytes()) }
     var localAudioSourceConfig by remember { mutableStateOf<LocalAudioSourceConfig?>(null) }
-    var importProgress by remember { mutableStateOf<LocalAudioImportProgress?>(null) }
+    @Suppress("UNUSED")
     var importError by remember { mutableStateOf<String?>(null) }
     var isImporting by remember { mutableStateOf(false) }
     val hasImportedDatabase = importedSize != null
@@ -132,21 +133,17 @@ fun AudioSettingsView(
     val importer = rememberLauncherForActivityResult(FileImportContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         if (isImporting || hasImportedDatabase) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
         isImporting = true
         importError = null
-        importProgress = LocalAudioImportProgress(copiedBytes = 0, totalBytes = null)
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    var lastProgressUpdate = 0L
-                    repository.importDatabase(context.contentResolver, uri) { progress ->
-                        val shouldUpdate = progress.totalBytes == progress.copiedBytes ||
-                            progress.copiedBytes - lastProgressUpdate >= ProgressUpdateBytes
-                        if (shouldUpdate) {
-                            lastProgressUpdate = progress.copiedBytes
-                            scope.launch { importProgress = progress }
-                        }
-                    }
+                    repository.importDatabase(context.contentResolver, uri)
                 }
             }.onSuccess { size ->
                 importedSize = size
@@ -156,7 +153,6 @@ fun AudioSettingsView(
             }.onFailure { error ->
                 importError = error.localizedImportMessage(context, importFailedMessage)
             }
-            importProgress = null
             isImporting = false
         }
     }
@@ -362,7 +358,6 @@ fun AudioSettingsView(
                                                 importedSize = null
                                                 localAudioSourceConfig = null
                                                 importError = null
-                                                importProgress = null
                                             },
                                         ) {
                                             Text(stringResource(R.string.action_delete))
@@ -400,14 +395,7 @@ fun AudioSettingsView(
                     )
                 }
             }
-            if (isImporting) {
-                HoshiBlockingProgressOverlay(
-                    message = stringResource(R.string.audio_copying_android_db),
-                    progress = importProgress?.takeIf { it.totalBytes != null }?.fraction,
-                    supportingText = importProgress?.label(context),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+
         }
     }
 }
@@ -517,8 +505,6 @@ private fun BackIconButton(onClick: () -> Unit) {
     }
 }
 
-private const val ProgressUpdateBytes = 64L * 1024L * 1024L
-
 @get:StringRes
 private val AudioPlaybackMode.labelRes: Int
     get() = when (this) {
@@ -527,11 +513,4 @@ private val AudioPlaybackMode.labelRes: Int
         AudioPlaybackMode.Mix -> R.string.audio_playback_mix
     }
 
-private val LocalAudioImportProgress.fraction: Float
-    get() = totalBytes?.takeIf { it > 0 }?.let { (copiedBytes.toFloat() / it.toFloat()).coerceIn(0f, 1f) } ?: 0f
 
-private fun LocalAudioImportProgress.label(context: android.content.Context): String {
-    val copied = Formatter.formatFileSize(context, copiedBytes)
-    val total = totalBytes?.let { Formatter.formatFileSize(context, it) }
-    return if (total == null) copied else context.getString(R.string.audio_copied_size_format, copied, total)
-}

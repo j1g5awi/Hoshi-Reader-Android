@@ -2,37 +2,28 @@ package moe.antimony.hoshi.features.audio
 
 import android.content.ContentResolver
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import moe.antimony.hoshi.importing.ImportFileType
 import moe.antimony.hoshi.importing.validateImportFile
 import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 import moe.antimony.hoshi.di.FilesDir
 
-data class LocalAudioImportProgress(
-    val copiedBytes: Long,
-    val totalBytes: Long?,
-)
-
 @Singleton
 class LocalAudioRepository @Inject constructor(
     @param:FilesDir private val filesDir: File,
+    @param:ApplicationContext private val context: Context,
 ) {
-    private val privateDbFile: File
-        get() = File(filesDir, AudioSettings.LocalAudioPath)
     private val sourceConfigFile: File
         get() = File(filesDir, AudioSettings.LocalAudioSourceConfigPath)
+    private val databaseRefFile: File
+        get() = File(filesDir, "Audio/android_db_ref.txt")
     private val json = Json {
         encodeDefaults = true
         ignoreUnknownKeys = true
@@ -45,44 +36,57 @@ class LocalAudioRepository @Inject constructor(
                 }
             }
         }
+    private var nativeDb: WordAudioDatabase? = null
 
-    val dbFile: File
-        get() = privateDbFile
+    init {
+        singleton = this
+        tryReopenFromRef()
+    }
 
     fun deleteDatabase() {
-        privateDbFile.delete()
+        nativeDb?.close()
+        nativeDb = null
         sourceConfigFile.delete()
+        databaseRefFile.delete()
         sourceConfigCache.clear()
     }
 
-    fun databaseSizeBytes(): Long? =
-        dbFile.takeIf { it.isFile }?.length()
-
-    fun canOpenDatabase(): Boolean =
-        withReadOnlyDatabase { db ->
-            db.rawQuery("SELECT name FROM sqlite_master LIMIT 1", null).use { cursor ->
-                cursor.moveToFirst()
-                true
-            }
-        } == true
-
-    fun importDatabase(contentResolver: ContentResolver, uri: Uri, onProgress: (LocalAudioImportProgress) -> Unit = {}): Long {
-        contentResolver.validateImportFile(uri, ImportFileType.LocalAudioDatabase)
-        val expectedSize = contentResolver.sizeBytes(uri)
-        return contentResolver.openInputStream(uri)?.use { input ->
-            replacePrivateDatabase(input, expectedSize, onProgress).also {
-                ensureSourceConfig(reset = true)
-            }
-        } ?: error("Unable to open audio database.")
+    fun databaseSizeBytes(): Long? {
+        ensureDbReady()
+        return if (nativeDb != null) 1L else null
     }
 
-    fun ensureSourceConfig(reset: Boolean = false): LocalAudioSourceConfig =
-        if (reset) {
+    fun canOpenDatabase(): Boolean {
+        ensureDbReady()
+        val ndb = nativeDb
+        if (ndb != null) return ndb.testConnection()
+        return false
+    }
+
+    fun importDatabase(
+        contentResolver: ContentResolver,
+        uri: Uri,
+    ): Long {
+        contentResolver.validateImportFile(uri, ImportFileType.LocalAudioDatabase)
+        nativeDb?.close()
+        nativeDb = null
+        val ndb = WordAudioDatabase(contentResolver)
+        if (!ndb.open(uri)) error(ndb.lastError ?: "Unable to open audio database")
+        nativeDb = ndb
+        saveDatabaseRef(uri.toString())
+        ensureSourceConfig(reset = true)
+        return contentResolver.sizeBytes(uri) ?: 0L
+    }
+
+    fun ensureSourceConfig(reset: Boolean = false): LocalAudioSourceConfig {
+        ensureDbReady()
+        return if (reset) {
             sourceConfigCache.clear()
             loadSourceConfig(reset = true).also(sourceConfigCache::replace)
         } else {
             sourceConfigCache.get()
         }
+    }
 
     private fun loadSourceConfig(reset: Boolean): LocalAudioSourceConfig {
         if (!reset) {
@@ -108,6 +112,7 @@ class LocalAudioRepository @Inject constructor(
     }
 
     fun updateSourceOrder(sourceOrder: List<String>): LocalAudioSourceConfig {
+        ensureDbReady()
         val availableSources = ensureSourceConfig().sourceOrder.toSet()
         if (availableSources.isEmpty()) {
             sourceConfigFile.delete()
@@ -121,93 +126,56 @@ class LocalAudioRepository @Inject constructor(
     }
 
     fun findAudio(term: String, reading: String): LocalAudioEntry? {
+        ensureDbReady()
         val normalizedReading = LocalAudioResolver.katakanaToHiragana(reading)
+        val ndb = nativeDb ?: return null
         val sourceOrder = ensureSourceConfig().sourceOrder
-        val rows = withReadOnlyDatabase { db ->
-            val args: Array<String>
-            val selection: String
-            if (normalizedReading.isBlank()) {
-                selection = "expression = ?"
-                args = arrayOf(term)
-            } else {
-                selection = "(expression = ? OR reading = ?)"
-                args = arrayOf(term, normalizedReading)
-            }
-            val rows = mutableListOf<LocalAudioEntry>()
-            db.query(
-                "entries",
-                arrayOf("source", "expression", "reading", "file"),
-                selection,
-                args,
-                null,
-                null,
-                null,
-            ).use { cursor ->
-                while (cursor.moveToNext()) {
-                    rows += LocalAudioEntry(
-                        source = cursor.getString(0),
-                        expression = cursor.getString(1),
-                        reading = cursor.getString(2),
-                        file = cursor.getString(3),
-                    )
-                }
-            }
-            rows
-        } ?: return null
+        val entries = ndb.findEntries(term, normalizedReading)
+        if (entries.isEmpty()) return null
+        val rows = entries.map { LocalAudioEntry(it.source, it.expression, it.reading, it.file) }
         return LocalAudioResolver.resolve(term, normalizedReading, rows, sourceOrder)
     }
 
     fun audioSourcesFromDatabase(): List<String> {
-        val sources = withReadOnlyDatabase { db ->
-            val rows = mutableListOf<String>()
-            db.query(
-                true,
-                "entries",
-                arrayOf("source"),
-                "lower(file) LIKE ? OR lower(file) LIKE ? OR lower(file) LIKE ?",
-                arrayOf("%.mp3", "%.opus", "%.ogg"),
-                null,
-                null,
-                null,
-                null,
-            ).use { cursor ->
-                while (cursor.moveToNext()) {
-                    rows += cursor.getString(0)
-                }
-            }
-            rows
-        }.orEmpty()
-        return LocalAudioSourceOrder.defaultOrder(sources)
+        ensureDbReady()
+        val ndb = nativeDb ?: return emptyList()
+        return LocalAudioSourceOrder.defaultOrder(ndb.getSources())
     }
 
     fun loadAudio(file: LocalAudioFile): ByteArray? {
-        return withReadOnlyDatabase { db ->
-            db.query(
-                "android",
-                arrayOf("data"),
-                "source = ? AND file = ?",
-                arrayOf(file.source, file.file),
-                null,
-                null,
-                null,
-                "1",
-            ).use { cursor ->
-                if (!cursor.moveToFirst()) null else cursor.getBlob(0)
-            }
+        ensureDbReady()
+        val ndb = nativeDb ?: return null
+        return ndb.getAudioData(file.file, file.source)
+    }
+
+    private fun ensureDbReady() {
+        if (nativeDb != null) return
+        val ref = readDatabaseRef() ?: return
+        reopenFromRef(ref)
+    }
+
+    private fun tryReopenFromRef() {
+        val ref = readDatabaseRef() ?: return
+        reopenFromRef(ref)
+    }
+
+    private fun reopenFromRef(ref: String) {
+        val uri = runCatching { Uri.parse(ref) }.getOrNull() ?: return
+        val ndb = WordAudioDatabase(context.contentResolver)
+        if (ndb.open(uri)) {
+            nativeDb = ndb
+            Log.i("HoshiLocalAudio", "Reopened audio database from saved reference")
         }
     }
 
-    private inline fun <T> withReadOnlyDatabase(block: (SQLiteDatabase) -> T): T? {
-        return runCatching {
-            if (!dbFile.isFile) return null
-            SQLiteDatabase.openDatabase(
-                dbFile.absolutePath,
-                null,
-                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
-            ).use(block)
-        }.onFailure { error ->
-            Log.w("HoshiLocalAudio", "Unable to open local audio database.", error)
-        }.getOrNull()
+    private fun saveDatabaseRef(uri: String) {
+        databaseRefFile.parentFile?.mkdirs()
+        databaseRefFile.writeText(uri)
+    }
+
+    private fun readDatabaseRef(): String? {
+        if (!databaseRefFile.isFile) return null
+        return runCatching { databaseRefFile.readText().trim().ifBlank { null } }.getOrNull()
     }
 
     private fun readSourceConfig(): LocalAudioSourceConfig? =
@@ -225,54 +193,6 @@ class LocalAudioRepository @Inject constructor(
         sourceConfigFile.writeText(json.encodeToString(config))
     }
 
-    internal fun replacePrivateDatabase(
-        input: InputStream,
-        expectedSizeBytes: Long?,
-        onProgress: (LocalAudioImportProgress) -> Unit = {},
-    ): Long {
-        privateDbFile.parentFile?.mkdirs()
-        val tempFile = File(privateDbFile.parentFile, "${privateDbFile.name}.tmp")
-        tempFile.delete()
-        var copied = 0L
-        val buffer = ByteArray(DatabaseCopyBufferSizeBytes)
-        try {
-            input.use { source ->
-                FileOutputStream(tempFile).use { output ->
-                    while (true) {
-                        val read = source.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        copied += read
-                        onProgress(LocalAudioImportProgress(copiedBytes = copied, totalBytes = expectedSizeBytes))
-                    }
-                    output.fd.sync()
-                }
-            }
-            if (expectedSizeBytes != null && copied != expectedSizeBytes) {
-                error("Incomplete audio database copy: copied $copied of $expectedSizeBytes bytes.")
-            }
-            moveReplacing(tempFile, privateDbFile)
-            return copied
-        } catch (error: Throwable) {
-            tempFile.delete()
-            throw error
-        }
-    }
-
-    private fun moveReplacing(source: File, target: File) {
-        runCatching {
-            Files.move(
-                source.toPath(),
-                target.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        }.recoverCatching { error ->
-            if (error !is AtomicMoveNotSupportedException) throw error
-            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }.getOrThrow()
-    }
-
     private fun ContentResolver.sizeBytes(uri: Uri): Long? {
         openAssetFileDescriptor(uri, "r")?.use { descriptor ->
             descriptor.length.takeIf { it >= 0 }?.let { return it }
@@ -285,10 +205,13 @@ class LocalAudioRepository @Inject constructor(
     }
 
     companion object {
-        private const val DatabaseCopyBufferSizeBytes = 1024 * 1024
+        @Volatile
+        private var singleton: LocalAudioRepository? = null
         private val SourceConfigCaches = mutableMapOf<String, LocalAudioSourceConfigCache>()
 
         fun fromContext(context: Context): LocalAudioRepository =
-            LocalAudioRepository(context.filesDir)
+            singleton ?: synchronized(this) {
+                singleton ?: LocalAudioRepository(context.filesDir, context).also { singleton = it }
+            }
     }
 }

@@ -86,3 +86,4 @@ Hoshi Reader Android 是 Hoshi Reader 的 Android/Kotlin/Jetpack Compose 原生�
 - `[Unreleased]` 中未发布功能的后续调整应合并到原 Added/Changed 条目，只有已发布版本中用户可遇到的问题才写 Fixed。
 - 如果实现或修复 GitHub issue，用户可见时在 changelog 条目中引用 issue，并在 commit message 中使用 closing keyword。
 - 小型低风险 issue 修复可直接在 `main` 完成；较大功能、跨模块重构或高风险变更使用 `codex/` 分支。
+- JNI audio module: `app/src/main/cpp/audio/word_audio_jni.cpp`，使用自编译 sqlite3.c (`app/src/main/cpp/sqlite/sqlite3.c`) 通过 `sqlite3_deserialize()` 零拷贝打开 SAF content URI。`build.gradle.kts` 中 `defaultConfig.externalNativeBuild.cmake.targets` 需包含 `word_audio_jni`。

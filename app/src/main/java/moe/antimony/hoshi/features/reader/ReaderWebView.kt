@@ -282,7 +282,7 @@ fun ReaderWebView(
             context = context.applicationContext,
             assets = popupAssets,
             fontManager = fontManager,
-            audioRequestHandler = AudioRequestHandler(LocalAudioRepository.fromContext(context.applicationContext)),
+            audioRequestHandler = AudioRequestHandler(appContainer.localAudioRepository),
             imageRequestHandler = DictionaryImageRequestHandler(dictionaryRepository::dictionaryMedia),
             iframeDocument = { currentReaderPopupIframeDocument.value },
         )
