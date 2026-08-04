@@ -37,3 +37,24 @@
 
 # JNA also ships desktop AWT integration classes that are unused on Android.
 -dontwarn java.awt.**
+
+# Media3 (androidx.media3) isolates API 31+ classes such as
+# android.media.metrics.LogSessionId behind *$Api31 inner classes that are
+# loaded lazily. A known R8 bug (horizontal class merging) can hoist those
+# signatures into their outer classes, forcing eager resolution of API 31
+# types at class verification time, which crashes (NoClassDefFoundError) on
+# API < 31 devices. See https://github.com/androidx/media/issues/2535.
+# Keep the inner-class boundaries and member signatures intact so the
+# lazy-loading guard behaves as Media3 designed it.
+-keep class androidx.media3.** {
+    public protected *;
+}
+-keepclassmembers class androidx.media3.** {
+    *;
+}
+-keep class android.media.metrics.** { *; }
+-dontwarn androidx.media3.**
+-dontwarn android.media.metrics.**
+-dontwarn com.google.common.**
+-dontwarn org.checkerframework.**
+-dontwarn javax.annotation.**
