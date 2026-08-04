@@ -230,7 +230,7 @@ Validation:
 - Verify page count, progress, lookup offsets, highlights, font switching,
   chapter jumps, and bookmark restore before and after fragmentation.
 
-### 5. Sasayaki import, playback ranges, media controls, and MP3 mining clips
+### 5. Sasayaki import, media controls, and MP3 mining clips
 
 Status: pending Android sync.
 
@@ -239,18 +239,16 @@ Commits:
 - `947898c` - export mined Sasayaki sentence audio as MP3.
 - `4a5cfde` - honor the command-center skip-control preference.
 - `a9a0747` - accept MP4 audiobooks and TXT subtitle files.
-- `d7fe3f2` - raise delay to -4...4 seconds and speed to 0.5...3x.
 
 Dependency/value reasoning:
 
-- These changes share import validation, Media3 playback, persisted playback
-  values, notification/session commands, and Anki media export.
+- These changes share import validation, Media3 playback, notification/session
+  commands, and Anki media export.
 
 iOS behavior to mirror:
 
 - Sasayaki accepts `.srt` or `.txt` subtitle files and `.mp3`, `.m4b`, or `.mp4`
   audiobooks.
-- Delay spans -4 to +4 seconds; playback speed spans 0.5x to 3x.
 - When skip controls are enabled, external previous/next commands seek by the
   configured skip interval; otherwise they move by cue.
 - Mined sentence clips are broadly compatible MP3 files with MP3 filenames.
@@ -259,7 +257,6 @@ Android current gap:
 
 - `ImportFileType.SasayakiSubtitle` accepts only `srt`, while
   `SasayakiAudiobook` and `SasayakiAudioRepository` accept only `mp3`/`m4b`.
-- `SasayakiSheet.kt` uses -2...2 delay and a 0.5...2.0 speed range.
 - `SasayakiPlaybackServiceRuntime.previousFromSession()`/`nextFromSession()`
   always move by cue; `readerSkipButtonAction` affects Reader buttons but not the
   MediaSession command path.
@@ -269,7 +266,7 @@ Android current gap:
 Suggested slice:
 
 - Expand SAF type validation and storage extension handling, then update
-  normalized persisted ranges and MediaSession command routing.
+  MediaSession command routing.
 - Choose an Android-supported MP3 encoding path only after checking current
   Media3/Android media guidance; preserve failure handling and background
   playback ownership in the existing MediaSessionService.
@@ -278,8 +275,8 @@ Validation:
 
 - Import and play every accepted subtitle/audio extension through SAF; reject
   unsupported content without losing the previous source.
-- Exercise min/max speed and delay, cue/seconds skip modes from Reader, headset,
-  notification, and system controls, and verify persistence after restart.
+- Exercise cue/seconds skip modes from Reader, headset, notification, and system
+  controls.
 - Mine clips through AnkiDroid and AnkiConnect and verify valid MP3 playback,
   MIME type, hashed filenames, and sentence range expansion.
 
@@ -489,7 +486,7 @@ Validation:
 | `ff86caa` | 2026-07-28 | Explicitly load selected reader font | Pending computed-font load await |
 | `947898c` | 2026-07-01 | Export Sasayaki mining clips as MP3 | Pending Android MP3 encoder/export path |
 | `4a5cfde` | 2026-07-14 | Honor media-control skip mode | Pending MediaSession command routing |
-| `a9a0747`, `d7fe3f2` | 2026-07-28 | MP4/TXT imports and larger playback ranges | Pending SAF/storage/range updates |
+| `a9a0747` | 2026-07-28 | MP4/TXT Sasayaki imports | Pending SAF/storage updates |
 | `c6b29c8`, `1db2cd3` | 2026-07-26 | Cover fallback and Show/Blur/Hide modes | Pending metadata/settings/Compose UI |
 | `ed25036`, `8d1442e` | 2026-06-14 / 2026-07-01 | Popup masonry redesign and theme accents | Pending settings/assets/height range |
 | `53fdb72` | 2026-06-15 | Closeable Reader open-failure view | Pending route error UI |
@@ -502,7 +499,7 @@ Validation:
 2. Multiple Anki card formats and advanced handlebars.
 3. Reader paginated paragraph splitting and explicit font readiness.
 4. Reader furigana reveal mode.
-5. Sasayaki import, playback ranges, media controls, and MP3 mining clips.
+5. Sasayaki import, media controls, and MP3 mining clips.
 6. Bookshelf cover privacy and fallback artwork.
 7. Lookup popup two-column layout and visual sizing.
 8. Reader route open-failure fallback.
@@ -511,6 +508,8 @@ Validation:
 
 ## Covered Or No Android Action
 
+- `d7fe3f2`: Android Sasayaki now exposes -4...4-second delay and 0.5...3x
+  playback-speed sliders with the existing 0.05 step size.
 - `4940ab7`, `6655ffd`, `3bff390`: Android now removes numeric HTML entities
   before shared matchable character counting, leaves trailing ellipses and
   periods outside the selected lookup sentence, and scopes recursive lookup to

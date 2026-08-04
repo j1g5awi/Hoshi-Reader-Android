@@ -180,6 +180,9 @@
     <string name="bookshelf_sort_title" comment="Sort option label, intentionally matching the title text-field label.">Title</string>
     <string name="bookshelf_select_books">Select books</string>
     <string name="bookshelf_move_selected_books">Move selected books</string>
+    <string name="bookshelf_new_shelf">New shelf…</string>
+    <string name="bookshelf_create_shelf">New Shelf</string>
+    <string name="bookshelf_create_and_move">Create and Move</string>
     <string name="bookshelf_no_shelf" comment="Shelf picker empty value, intentionally matching generic none.">None</string>
     <string name="bookshelf_delete_selected_books">Delete selected books</string>
     <string name="bookshelf_manage_shelves">Manage Shelves</string>
@@ -198,6 +201,7 @@
     <string name="bookshelf_save_shelf_name">Save shelf name</string>
     <string name="bookshelf_delete_shelf">Delete shelf</string>
     <string name="bookshelf_shelf_name_exists">A shelf with this name already exists.</string>
+    <string name="bookshelf_create_shelf_failed">Failed to create the shelf. Try again.</string>
     <string name="bookshelf_shelf_name">Shelf name</string>
     <string name="bookshelf_add_shelf">Add shelf</string>
     <string name="bookshelf_empty_title">No Books</string>
@@ -208,6 +212,10 @@
     <plurals name="bookshelf_bulk_delete_title">
         <item quantity="one">Delete %1$d book?</item>
         <item quantity="other">Delete %1$d books?</item>
+    </plurals>
+    <plurals name="bookshelf_created_shelf_and_moved_books">
+        <item quantity="one">Created “%1$s” and moved %2$d book.</item>
+        <item quantity="other">Created “%1$s” and moved %2$d books.</item>
     </plurals>
     <string name="dictionary_select_zip_archive">Select a .zip dictionary archive.</string>
     <string name="dictionary_download_failed">Failed to download dictionaries.</string>

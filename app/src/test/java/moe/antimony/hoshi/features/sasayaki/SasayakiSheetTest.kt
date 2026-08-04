@@ -12,9 +12,9 @@ import org.junit.Test
 
 class SasayakiSheetTest {
     @Test
-    fun playbackSpeedSliderAllowsTwoTimesSpeedWithExistingStepSize() {
+    fun playbackSpeedSliderAllowsThreeTimesSpeedWithExistingStepSize() {
         assertEquals(0.5f, SasayakiSpeedSliderRange.start, 0.0f)
-        assertEquals(2.0f, SasayakiSpeedSliderRange.endInclusive, 0.0f)
+        assertEquals(3.0f, SasayakiSpeedSliderRange.endInclusive, 0.0f)
 
         val intervalCount = SasayakiSpeedSliderSteps + 1
         val stepSize = (SasayakiSpeedSliderRange.endInclusive - SasayakiSpeedSliderRange.start) / intervalCount

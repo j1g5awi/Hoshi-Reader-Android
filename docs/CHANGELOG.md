@@ -6,8 +6,11 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ## [Unreleased]
 
+## [v1.3.2] - 2026-08-04
+
 ### Added
 
+- Add the option to create a new shelf while moving one or more selected books.
 - Add a Reader image gallery, true table-of-contents chapter ranges, and optional
   current-chapter progress in Reader chrome and statistics.
 - Add a configurable daily statistics reset time and pause reading statistics
@@ -20,6 +23,8 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ### Changed
 
+- Expand Sasayaki delay adjustment to -4...4 seconds and playback speed to
+  0.5...3x.
 - Rename the Reader Go to panel to Contents, order its tabs as Chapters,
   Highlights, Gallery, and Search, and remove overscroll deformation from
   scrolling surfaces throughout the app.

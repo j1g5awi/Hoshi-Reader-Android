@@ -80,6 +80,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -184,6 +186,7 @@ fun BookshelfView(
     val renameScrollState = rememberScrollState()
     var showBulkDeleteConfirmation by remember { mutableStateOf(false) }
     var showShelfManagement by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val importer = rememberLauncherForActivityResult(MultipleFileImportContent()) { uris: List<Uri> ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
@@ -259,8 +262,28 @@ fun BookshelfView(
         booksViewModel.consumeOpenReaderEvent()
     }
 
+    val shelfMoveSuccess = uiState.shelfCreationMoveStatus as? ShelfCreationMoveStatus.Succeeded
+    val shelfMoveSuccessMessage = shelfMoveSuccess?.let { success ->
+        pluralStringResource(
+            R.plurals.bookshelf_created_shelf_and_moved_books,
+            success.bookCount,
+            success.shelfName,
+            success.bookCount,
+        )
+    }
+    LaunchedEffect(shelfMoveSuccess, shelfMoveSuccessMessage) {
+        if (shelfMoveSuccess != null && shelfMoveSuccessMessage != null) {
+            presentShelfCreationMoveSuccess(
+                message = shelfMoveSuccessMessage,
+                showSnackbar = { snackbarHostState.showSnackbar(it) },
+                consumeSuccess = booksViewModel::consumeShelfCreationMoveStatus,
+            )
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
     BooksTab(
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         layoutSpec = layoutSpec,
         bookEntries = uiState.bookEntries,
         remoteBookEntries = uiState.remoteBookEntries,
@@ -290,6 +313,9 @@ fun BookshelfView(
         onToggleSelectedBook = booksViewModel::toggleSelectedBook,
         onShelfExpandedChange = booksViewModel::setShelfExpanded,
         onMoveSelectedBooks = booksViewModel::moveSelectedBooks,
+        onCreateShelfForSelectedBooks = {
+            booksViewModel.beginShelfCreationMoveForSelectedBooks()
+        },
         onDeleteSelectedBooks = { showBulkDeleteConfirmation = true },
         onManageShelves = { showShelfManagement = true },
         onImportFiles = ::launchBookImporter,
@@ -319,6 +345,10 @@ fun BookshelfView(
             renameTextState.replaceTextAndSelectStart(it.displayTitle)
         },
         onMoveBook = booksViewModel::moveBook,
+        onCreateShelfForBook = { entry ->
+            contextMenuTarget = null
+            booksViewModel.beginShelfCreationMoveForBook(entry)
+        },
         profileState = profileState,
         onSetBookProfile = booksViewModel::setBookProfile,
         syncSettings = syncSettings,
@@ -333,6 +363,13 @@ fun BookshelfView(
             )
         },
     )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+        )
+    }
 
     uiState.statusMessage?.let { message ->
         AlertDialog(
@@ -504,6 +541,26 @@ fun BookshelfView(
             onDismiss = { showShelfManagement = false },
         )
     }
+
+    uiState.shelfCreationMoveDialog?.let { dialog ->
+        NewShelfMoveDialog(
+            shelves = uiState.shelves,
+            name = dialog.name,
+            status = uiState.shelfCreationMoveStatus,
+            onNameChanged = booksViewModel::updateShelfCreationMoveName,
+            onConfirm = booksViewModel::confirmShelfCreationMove,
+            onDismiss = booksViewModel::dismissShelfCreationMoveDialog,
+        )
+    }
+}
+
+internal suspend fun presentShelfCreationMoveSuccess(
+    message: String,
+    showSnackbar: suspend (String) -> Unit,
+    consumeSuccess: () -> Unit,
+) {
+    showSnackbar(message)
+    consumeSuccess()
 }
 
 @Composable
@@ -818,6 +875,7 @@ private fun BooksTab(
     onToggleSelectedBook: (BookEntry) -> Unit,
     onShelfExpandedChange: (String, Boolean) -> Unit,
     onMoveSelectedBooks: (String?) -> Unit,
+    onCreateShelfForSelectedBooks: () -> Unit,
     onDeleteSelectedBooks: () -> Unit,
     onManageShelves: () -> Unit,
     onImportFiles: () -> Unit,
@@ -835,6 +893,7 @@ private fun BooksTab(
     onMarkReadCandidate: (BookEntry) -> Unit,
     onRenameCandidate: (BookEntry) -> Unit,
     onMoveBook: (BookEntry, String?) -> Unit,
+    onCreateShelfForBook: (BookEntry) -> Unit,
     profileState: ProfileState,
     onSetBookProfile: (BookEntry, String?) -> Unit,
     syncSettings: SyncSettings,
@@ -862,6 +921,7 @@ private fun BooksTab(
                 onStartSelecting = onStartSelecting,
                 onClearSelection = onClearSelection,
                 onMoveSelectedBooks = onMoveSelectedBooks,
+                onCreateShelfForSelectedBooks = onCreateShelfForSelectedBooks,
                 onDeleteSelectedBooks = onDeleteSelectedBooks,
                 onManageShelves = onManageShelves,
                 onImportFiles = onImportFiles,
@@ -1005,6 +1065,7 @@ private fun BooksTab(
                                             expanded = isBookContextMenuExpanded(contextMenuTarget, section, entry),
                                             onDismiss = { onContextMenuTargetChange(null) },
                                             onMoveBook = onMoveBook,
+                                            onCreateShelfForBook = onCreateShelfForBook,
                                             onMarkReadCandidate = onMarkReadCandidate,
                                             onRenameCandidate = onRenameCandidate,
                                             onDeleteCandidate = onDeleteCandidate,
@@ -1099,6 +1160,7 @@ private fun BooksTopAppBar(
     onStartSelecting: () -> Unit,
     onClearSelection: () -> Unit,
     onMoveSelectedBooks: (String?) -> Unit,
+    onCreateShelfForSelectedBooks: () -> Unit,
     onDeleteSelectedBooks: () -> Unit,
     onManageShelves: () -> Unit,
     onImportFiles: () -> Unit,
@@ -1178,6 +1240,17 @@ private fun BooksTopAppBar(
                         expanded = moveMenuExpanded,
                         onDismissRequest = { moveMenuExpanded = false },
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.bookshelf_new_shelf)) },
+                            leadingIcon = {
+                                Icon(Icons.Rounded.Add, contentDescription = null)
+                            },
+                            onClick = {
+                                moveMenuExpanded = false
+                                onCreateShelfForSelectedBooks()
+                            },
+                        )
+                        HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.bookshelf_no_shelf)) },
                             onClick = {
@@ -1544,6 +1617,7 @@ private fun BookContextMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onMoveBook: (BookEntry, String?) -> Unit,
+    onCreateShelfForBook: (BookEntry) -> Unit,
     onMarkReadCandidate: (BookEntry) -> Unit,
     onRenameCandidate: (BookEntry) -> Unit,
     onDeleteCandidate: (BookEntry) -> Unit,
@@ -1652,6 +1726,7 @@ private fun BookContextMenu(
         expanded = expanded && moveMenuExpanded,
         onDismiss = onDismiss,
         onMoveBook = onMoveBook,
+        onCreateShelfForBook = onCreateShelfForBook,
     )
     ProfileDestinationMenu(
         entry = entry,
@@ -1727,12 +1802,24 @@ private fun MoveDestinationMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onMoveBook: (BookEntry, String?) -> Unit,
+    onCreateShelfForBook: (BookEntry) -> Unit,
 ) {
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
     ) {
         SortMenuHeader(text = stringResource(R.string.bookshelf_move))
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.bookshelf_new_shelf)) },
+            leadingIcon = {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+            },
+            onClick = {
+                onCreateShelfForBook(entry)
+                onDismiss()
+            },
+        )
         HorizontalDivider()
         DropdownMenuItem(
             text = { Text(stringResource(R.string.bookshelf_no_shelf)) },

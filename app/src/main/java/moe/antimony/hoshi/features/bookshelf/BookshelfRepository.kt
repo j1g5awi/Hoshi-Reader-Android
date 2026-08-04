@@ -69,6 +69,7 @@ internal interface BookshelfRepository {
     suspend fun deleteBooks(entries: Collection<BookEntry>)
     suspend fun moveBooks(bookIds: Set<String>, shelfName: String?)
     suspend fun createShelf(name: String)
+    suspend fun createShelfAndMoveBooks(name: String, bookIds: Set<String>): List<BookShelf>?
     suspend fun deleteShelf(name: String)
     suspend fun renameShelf(oldName: String, newName: String)
     suspend fun moveShelf(fromIndex: Int, toIndex: Int)
@@ -220,6 +221,19 @@ internal class AndroidBookshelfRepository @Inject constructor(
         if (shelves.none { it.name == trimmed }) {
             bookRepository.saveShelves(shelves + BookShelf(trimmed, emptyList()))
         }
+    }
+
+    override suspend fun createShelfAndMoveBooks(
+        name: String,
+        bookIds: Set<String>,
+    ): List<BookShelf>? = withContext(ioDispatcher) {
+        val updatedShelves = createShelfAndMoveBooksList(
+            shelves = bookRepository.loadShelves(),
+            name = name,
+            bookIds = bookIds,
+        ) ?: return@withContext null
+        bookRepository.saveShelves(updatedShelves)
+        updatedShelves
     }
 
     override suspend fun deleteShelf(name: String) = withContext(ioDispatcher) {
@@ -416,6 +430,21 @@ internal fun renameShelfList(
             shelf
         }
     }
+}
+
+internal fun createShelfAndMoveBooksList(
+    shelves: List<BookShelf>,
+    name: String,
+    bookIds: Set<String>,
+): List<BookShelf>? {
+    val trimmedName = name.trim()
+    if (trimmedName.isEmpty() || bookIds.isEmpty() || shelves.any { it.name == trimmedName }) {
+        return null
+    }
+    val updatedShelves = shelves.map { shelf ->
+        shelf.copy(bookIds = shelf.bookIds.filterNot { it in bookIds })
+    }
+    return updatedShelves + BookShelf(name = trimmedName, bookIds = bookIds.toList())
 }
 
 private val remoteJson = Json {

@@ -84,8 +84,8 @@ import moe.antimony.hoshi.importing.validateImportFile
 import moe.antimony.hoshi.ui.HoshiBlockingProgressOverlay
 import moe.antimony.hoshi.ui.asString
 
-internal val SasayakiSpeedSliderRange = 0.5f..2.0f
-internal const val SasayakiSpeedSliderSteps = 29
+internal val SasayakiSpeedSliderRange = 0.5f..3.0f
+internal const val SasayakiSpeedSliderSteps = 49
 internal const val SasayakiAudiobookCoverWidthDp = 68
 internal const val SasayakiAudiobookCoverHeightDp = 68
 internal val SasayakiSheetTabRole = Role.Tab
@@ -701,8 +701,8 @@ private fun SasayakiSettingsTab(
             label = stringResource(R.string.sasayaki_delay),
             valueText = String.format(Locale.US, "%+.2fs", player.delay),
             value = player.delay.toFloat(),
-            range = -2f..2f,
-            steps = 79,
+            range = -4f..4f,
+            steps = 159,
             onValueChange = { player.setDelay(it.toDouble()) },
         )
         SliderRow(

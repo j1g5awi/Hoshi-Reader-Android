@@ -700,6 +700,153 @@ class BookshelfViewModelTest {
     }
 
     @Test
+    fun createShelfAndMoveSelectedBooksClearsSelectionAndExpandsNewShelfOnSuccess() {
+        val first = bookEntry("book-a")
+        val second = bookEntry("book-b")
+        val repository = FakeBookshelfRepository(entries = listOf(first, second))
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        viewModel.startSelecting()
+        viewModel.toggleSelectedBook(first)
+        viewModel.toggleSelectedBook(second)
+
+        viewModel.beginShelfCreationMoveForSelectedBooks()
+        viewModel.updateShelfCreationMoveName("  New Shelf  ")
+        viewModel.confirmShelfCreationMove()
+
+        assertEquals(
+            listOf(Triple("New Shelf", setOf("book-a", "book-b"), true)),
+            repository.createdShelvesWithBooks,
+        )
+        assertFalse(viewModel.uiState.value.isSelecting)
+        assertEquals(emptySet<String>(), viewModel.uiState.value.selectedBookIds)
+        assertEquals(true, viewModel.uiState.value.shelfExpansionState["shelf:New Shelf"])
+        assertEquals(
+            ShelfCreationMoveStatus.Succeeded(shelfName = "New Shelf", bookCount = 2),
+            viewModel.uiState.value.shelfCreationMoveStatus,
+        )
+    }
+
+    @Test
+    fun createShelfAndMoveSingleBookUsesTheSameOperationWithoutChangingSelectionMode() {
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(entries = listOf(entry))
+        val viewModel = BookshelfViewModel(repository, testScope())
+
+        viewModel.beginShelfCreationMoveForBook(entry)
+        viewModel.updateShelfCreationMoveName("New Shelf")
+        viewModel.confirmShelfCreationMove()
+
+        assertEquals(
+            listOf(Triple("New Shelf", setOf("book-a"), true)),
+            repository.createdShelvesWithBooks,
+        )
+        assertFalse(viewModel.uiState.value.isSelecting)
+        assertEquals(
+            ShelfCreationMoveStatus.Succeeded(shelfName = "New Shelf", bookCount = 1),
+            viewModel.uiState.value.shelfCreationMoveStatus,
+        )
+    }
+
+    @Test
+    fun duplicateShelfDuringCreateAndMoveKeepsBatchSelection() {
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            createShelfAndMoveResult = false,
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        viewModel.startSelecting()
+        viewModel.toggleSelectedBook(entry)
+
+        viewModel.beginShelfCreationMoveForSelectedBooks()
+        viewModel.updateShelfCreationMoveName("Manga")
+        viewModel.confirmShelfCreationMove()
+
+        assertTrue(viewModel.uiState.value.isSelecting)
+        assertEquals(setOf("book-a"), viewModel.uiState.value.selectedBookIds)
+        assertEquals(
+            "A shelf with this name already exists.",
+            (viewModel.uiState.value.shelfCreationMoveStatus as ShelfCreationMoveStatus.Failed).message.testString(),
+        )
+    }
+
+    @Test
+    fun createShelfAndMoveIgnoresRepeatedSubmissionWhileTheFirstIsRunning() {
+        val continueCreation = CompletableDeferred<Unit>()
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            createShelfAndMoveGate = continueCreation,
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+
+        viewModel.beginShelfCreationMoveForBook(entry)
+        viewModel.updateShelfCreationMoveName("New Shelf")
+        viewModel.confirmShelfCreationMove()
+        viewModel.confirmShelfCreationMove()
+
+        assertEquals(1, repository.createdShelvesWithBooks.size)
+        continueCreation.complete(Unit)
+    }
+
+    @Test
+    fun shelfCreationMoveTargetAndDraftRemainInViewModelWhileSubmitting() {
+        val continueCreation = CompletableDeferred<Unit>()
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            createShelfAndMoveGate = continueCreation,
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        viewModel.startSelecting()
+        viewModel.toggleSelectedBook(entry)
+
+        viewModel.beginShelfCreationMoveForSelectedBooks()
+        viewModel.updateShelfCreationMoveName("  New Shelf  ")
+        viewModel.confirmShelfCreationMove()
+        viewModel.consumeShelfCreationMoveStatus()
+
+        assertEquals(
+            ShelfCreationMoveDialogState(
+                bookIds = setOf("book-a"),
+                clearSelectionOnSuccess = true,
+                name = "  New Shelf  ",
+            ),
+            viewModel.uiState.value.shelfCreationMoveDialog,
+        )
+        assertEquals(ShelfCreationMoveStatus.Submitting, viewModel.uiState.value.shelfCreationMoveStatus)
+        assertEquals(1, repository.createdShelvesWithBooks.size)
+        continueCreation.complete(Unit)
+    }
+
+    @Test
+    fun createShelfAndMoveFailureKeepsBatchSelectionAndShowsStableError() {
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            createShelfAndMoveError = IllegalStateException("disk details"),
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        viewModel.startSelecting()
+        viewModel.toggleSelectedBook(entry)
+
+        viewModel.beginShelfCreationMoveForSelectedBooks()
+        viewModel.updateShelfCreationMoveName("Manga")
+        viewModel.confirmShelfCreationMove()
+
+        assertTrue(viewModel.uiState.value.isSelecting)
+        assertEquals(setOf("book-a"), viewModel.uiState.value.selectedBookIds)
+        assertEquals(
+            "Failed to create the shelf. Try again.",
+            (viewModel.uiState.value.shelfCreationMoveStatus as ShelfCreationMoveStatus.Failed).message.testString(),
+        )
+    }
+
+    @Test
     fun createDeleteAndMoveShelfDelegateToRepositoryAndReload() {
         val repository = FakeBookshelfRepository()
         val viewModel = BookshelfViewModel(repository, testScope())
@@ -742,6 +889,45 @@ class BookshelfViewModelTest {
         assertEquals(shelves, renameShelfList(shelves, oldName = "Manga", newName = "   "))
         assertEquals(shelves, renameShelfList(shelves, oldName = "Manga", newName = "Novels"))
         assertEquals(shelves, renameShelfList(shelves, oldName = "Missing", newName = "Mystery"))
+    }
+
+    @Test
+    fun createShelfAndMoveBooksListMovesMembershipIntoTrimmedNewShelf() {
+        val shelves = listOf(
+            BookShelf(name = "Manga", bookIds = listOf("book-a", "book-b")),
+            BookShelf(name = "Novels", bookIds = listOf("book-c")),
+        )
+
+        assertEquals(
+            listOf(
+                BookShelf(name = "Manga", bookIds = listOf("book-a")),
+                BookShelf(name = "Novels", bookIds = emptyList()),
+                BookShelf(name = "New Shelf", bookIds = listOf("book-b", "book-c")),
+            ),
+            createShelfAndMoveBooksList(
+                shelves = shelves,
+                name = "  New Shelf  ",
+                bookIds = linkedSetOf("book-b", "book-c"),
+            ),
+        )
+    }
+
+    @Test
+    fun createShelfAndMoveBooksListRejectsBlankAndDuplicateNames() {
+        val shelves = listOf(BookShelf(name = "Manga", bookIds = listOf("book-a")))
+
+        assertNull(createShelfAndMoveBooksList(shelves, name = "   ", bookIds = setOf("book-a")))
+        assertNull(createShelfAndMoveBooksList(shelves, name = " Manga ", bookIds = setOf("book-a")))
+        assertNull(createShelfAndMoveBooksList(shelves, name = "Novels", bookIds = emptySet()))
+    }
+
+    @Test
+    fun newShelfNameValidationDistinguishesBlankDuplicateAndValidNames() {
+        val shelves = listOf(BookShelf(name = "Manga", bookIds = emptyList()))
+
+        assertEquals(NewShelfNameValidation.Blank, validateNewShelfName("   ", shelves))
+        assertEquals(NewShelfNameValidation.Duplicate, validateNewShelfName(" Manga ", shelves))
+        assertEquals(NewShelfNameValidation.Valid, validateNewShelfName(" Novels ", shelves))
     }
 
     @Test
@@ -996,6 +1182,9 @@ class BookshelfViewModelTest {
         val syncGate: CompletableDeferred<Unit>? = null,
         val syncResult: SyncResult? = null,
         val progressLoadGate: CompletableDeferred<Unit>? = null,
+        val createShelfAndMoveResult: Boolean = true,
+        val createShelfAndMoveGate: CompletableDeferred<Unit>? = null,
+        val createShelfAndMoveError: Throwable? = null,
         private val loadPlans: ArrayDeque<LoadPlan> = ArrayDeque(),
     ) : BookshelfRepository {
         data class LoadPlan(
@@ -1009,6 +1198,7 @@ class BookshelfViewModelTest {
         val deletedEntries = mutableListOf<BookEntry>()
         val movedBooks = mutableListOf<Pair<Set<String>, String?>>()
         val createdShelves = mutableListOf<String>()
+        val createdShelvesWithBooks = mutableListOf<Triple<String, Set<String>, Boolean>>()
         val deletedShelves = mutableListOf<String>()
         val renamedShelves = mutableListOf<Pair<String, String>>()
         val movedShelves = mutableListOf<Pair<Int, Int>>()
@@ -1097,6 +1287,14 @@ class BookshelfViewModelTest {
             createdShelves += name
         }
 
+        override suspend fun createShelfAndMoveBooks(name: String, bookIds: Set<String>): List<BookShelf>? {
+            createdShelvesWithBooks += Triple(name, bookIds, createShelfAndMoveResult)
+            createShelfAndMoveGate?.await()
+            createShelfAndMoveError?.let { throw it }
+            if (!createShelfAndMoveResult) return null
+            return createShelfAndMoveBooksList(shelves, name, bookIds)
+        }
+
         override suspend fun deleteShelf(name: String) {
             deletedShelves += name
         }
@@ -1162,6 +1360,8 @@ private fun UiText?.testString(): String? =
             R.string.bookshelf_remote_books_load_failed -> "Failed to fetch books from Google Drive."
             R.string.bookshelf_remote_book_import_failed -> "Failed to import book from Google Drive."
             R.string.bookshelf_remote_book_delete_failed -> "Failed to delete book from Google Drive."
+            R.string.bookshelf_shelf_name_exists -> "A shelf with this name already exists."
+            R.string.bookshelf_create_shelf_failed -> "Failed to create the shelf. Try again."
             else -> "resource:$id:${args.joinToString()}"
         }
         is UiText.Plural -> "plural:$id:$quantity:${args.joinToString()}"

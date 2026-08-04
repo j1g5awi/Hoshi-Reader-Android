@@ -414,6 +414,61 @@ internal class BookshelfViewModel : ViewModel {
         }
     }
 
+    fun beginShelfCreationMoveForSelectedBooks() {
+        val selectedIds = _uiState.value.selectedBookIds
+        if (selectedIds.isEmpty()) return
+        beginShelfCreationMove(selectedIds, clearSelectionOnSuccess = true)
+    }
+
+    fun beginShelfCreationMoveForBook(entry: BookEntry) {
+        beginShelfCreationMove(setOf(entry.metadata.id), clearSelectionOnSuccess = false)
+    }
+
+    fun updateShelfCreationMoveName(name: String) {
+        _uiState.update { state ->
+            if (state.shelfCreationMoveStatus is ShelfCreationMoveStatus.Submitting) {
+                state
+            } else {
+                state.copy(
+                    shelfCreationMoveDialog = state.shelfCreationMoveDialog?.copy(name = name),
+                    shelfCreationMoveStatus = ShelfCreationMoveStatus.Idle,
+                )
+            }
+        }
+    }
+
+    fun confirmShelfCreationMove() {
+        val dialog = _uiState.value.shelfCreationMoveDialog ?: return
+        createShelfAndMoveBooks(
+            name = dialog.name,
+            bookIds = dialog.bookIds,
+            clearSelectionOnSuccess = dialog.clearSelectionOnSuccess,
+        )
+    }
+
+    fun dismissShelfCreationMoveDialog() {
+        _uiState.update { state ->
+            if (state.shelfCreationMoveStatus is ShelfCreationMoveStatus.Submitting) {
+                state
+            } else {
+                state.copy(
+                    shelfCreationMoveDialog = null,
+                    shelfCreationMoveStatus = ShelfCreationMoveStatus.Idle,
+                )
+            }
+        }
+    }
+
+    fun consumeShelfCreationMoveStatus() {
+        _uiState.update { state ->
+            if (state.shelfCreationMoveStatus is ShelfCreationMoveStatus.Submitting) {
+                state
+            } else {
+                state.copy(shelfCreationMoveStatus = ShelfCreationMoveStatus.Idle)
+            }
+        }
+    }
+
     fun deleteShelf(name: String) {
         workScope.launch {
             repository.deleteShelf(name)
@@ -505,6 +560,82 @@ internal class BookshelfViewModel : ViewModel {
     fun rebuildLookupQuery() {
         workScope.launch {
             runCatching { repository.rebuildLookupQuery() }
+        }
+    }
+
+    private fun createShelfAndMoveBooks(
+        name: String,
+        bookIds: Set<String>,
+        clearSelectionOnSuccess: Boolean,
+    ) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty() || bookIds.isEmpty()) return
+        if (_uiState.value.shelfCreationMoveStatus is ShelfCreationMoveStatus.Submitting) return
+        _uiState.update { it.copy(shelfCreationMoveStatus = ShelfCreationMoveStatus.Submitting) }
+        workScope.launch {
+            val updatedShelves = try {
+                repository.createShelfAndMoveBooks(trimmedName, bookIds)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        shelfCreationMoveStatus = ShelfCreationMoveStatus.Failed(
+                            UiText.Resource(R.string.bookshelf_create_shelf_failed),
+                        ),
+                    )
+                }
+                return@launch
+            }
+            if (updatedShelves == null) {
+                _uiState.update {
+                    it.copy(
+                        shelfCreationMoveStatus = ShelfCreationMoveStatus.Failed(
+                            UiText.Resource(R.string.bookshelf_shelf_name_exists),
+                        ),
+                    )
+                }
+                return@launch
+            }
+            _uiState.update { state ->
+                state.copy(
+                    shelves = updatedShelves,
+                    sections = bookshelfSections(
+                        entries = state.bookEntries,
+                        shelves = updatedShelves,
+                        progressById = state.bookProgressById,
+                        showReading = state.showReading,
+                        sortOption = state.sortOption,
+                    ),
+                    isSelecting = if (clearSelectionOnSuccess) false else state.isSelecting,
+                    selectedBookIds = if (clearSelectionOnSuccess) emptySet() else state.selectedBookIds,
+                    shelfExpansionState = state.shelfExpansionState + ("shelf:$trimmedName" to true),
+                    shelfCreationMoveDialog = null,
+                    shelfCreationMoveStatus = ShelfCreationMoveStatus.Succeeded(
+                        shelfName = trimmedName,
+                        bookCount = bookIds.size,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun beginShelfCreationMove(
+        bookIds: Set<String>,
+        clearSelectionOnSuccess: Boolean,
+    ) {
+        if (bookIds.isEmpty()) return
+        _uiState.update { state ->
+            if (state.shelfCreationMoveStatus is ShelfCreationMoveStatus.Submitting) {
+                state
+            } else {
+                state.copy(
+                    shelfCreationMoveDialog = ShelfCreationMoveDialogState(
+                        bookIds = bookIds,
+                        clearSelectionOnSuccess = clearSelectionOnSuccess,
+                    ),
+                    shelfCreationMoveStatus = ShelfCreationMoveStatus.Idle,
+                )
+            }
         }
     }
 
