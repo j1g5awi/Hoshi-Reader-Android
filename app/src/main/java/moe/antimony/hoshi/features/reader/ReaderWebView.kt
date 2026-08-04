@@ -86,6 +86,7 @@ import moe.antimony.hoshi.features.sasayaki.SasayakiPlayer
 import moe.antimony.hoshi.features.sasayaki.SasayakiSettings
 import moe.antimony.hoshi.features.sasayaki.SasayakiSheet
 import moe.antimony.hoshi.features.sasayaki.SasayakiMatchDependencies
+import moe.antimony.hoshi.features.sasayaki.sasayakiDefaultSheetTab
 import moe.antimony.hoshi.features.sasayaki.sasayakiImageHoldMillis
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
@@ -124,6 +125,7 @@ fun ReaderWebView(
     val audioSettingsRepository = appContainer.audioSettingsRepository
     val sasayakiSettingsRepository = appContainer.sasayakiSettingsRepository
     val sasayakiPlaybackServiceRuntime = appContainer.sasayakiPlaybackServiceRuntime
+    val statisticsDateProvider = appContainer.statisticsDateProvider
     val bookRepository = appContainer.bookRepository
     var sasayakiSettings by remember { mutableStateOf(SasayakiSettings()) }
     var sasayakiMatchData by remember(bookRoot) { mutableStateOf<SasayakiMatchData?>(null) }
@@ -318,12 +320,20 @@ fun ReaderWebView(
             emptyList()
         }
     }
-    val statisticsTracker = remember(bookRoot, book.title, effectiveSettings.enableStatistics, persistedStatistics) {
+    val statisticsTracker = remember(
+        bookRoot,
+        book.title,
+        effectiveSettings.enableStatistics,
+        effectiveSettings.statisticsResetMinutes,
+        persistedStatistics,
+    ) {
         persistedStatistics?.let { statistics ->
             ReaderStatisticsTracker(
                 title = book.title,
                 initialStatistics = statistics,
                 enabled = effectiveSettings.enableStatistics,
+                resetMinutes = effectiveSettings.statisticsResetMinutes,
+                dateProvider = statisticsDateProvider,
             )
         }
     }
@@ -335,12 +345,7 @@ fun ReaderWebView(
             stateHolder.readerPosition.displayedPosition.progress,
         )
     fun currentChapterEndCharacter(): Int {
-        val index = stateHolder.readerPosition.displayedPosition.index
-        return if (index < book.chapters.lastIndex) {
-            book.characterCountAt(index + 1, 0.0)
-        } else {
-            book.bookInfo.characterCount
-        }
+        return book.tocRangeAt(stateHolder.readerPosition.displayedPosition).endCharacter
     }
     fun syncStatisticsState() {
         statisticsState = statisticsTracker?.state
@@ -453,6 +458,14 @@ fun ReaderWebView(
         if (!resumeStatisticsTrackingOnStart) return
         resumeStatisticsTrackingOnStart = false
         statisticsTracker?.start(currentDisplayedCharacter())
+        syncStatisticsState()
+    }
+    val hasStatisticsBlockingModal = stateHolder.hasStatisticsBlockingSheet || fullscreenImage != null
+    LaunchedEffect(statisticsTracker, hasStatisticsBlockingModal) {
+        statisticsTracker?.setModalPaused(
+            paused = hasStatisticsBlockingModal,
+            currentCharacter = currentDisplayedCharacter(),
+        )
         syncStatisticsState()
     }
     LaunchedEffect(statisticsTracker, effectiveSettings.statisticsAutostartMode) {
@@ -914,10 +927,17 @@ fun ReaderWebView(
         stateHolder.forwardTargetPosition,
         statisticsState,
     ) {
+        val currentCharacter = book.characterCountAt(
+            readerPosition.displayedPosition.index,
+            readerPosition.displayedPosition.progress,
+        )
+        val chapterRange = book.tocRangeAt(readerPosition.displayedPosition)
         ReaderChromeState(
             title = book.title,
-            currentCharacter = book.characterCountAt(readerPosition.displayedPosition.index, readerPosition.displayedPosition.progress),
+            currentCharacter = currentCharacter,
             totalCharacters = book.bookInfo.characterCount,
+            chapterCurrentCharacter = chapterRange.currentCharacter(currentCharacter),
+            chapterTotalCharacters = chapterRange.totalCharacters,
             backTargetCharacter = stateHolder.backTargetPosition?.let { book.characterCountAt(it.index, it.progress) },
             forwardTargetCharacter = stateHolder.forwardTargetPosition?.let { book.characterCountAt(it.index, it.progress) },
             statistics = statisticsState?.session?.let {
@@ -998,7 +1018,11 @@ fun ReaderWebView(
                 ReaderPaginationScripts.highlightSasayakiCueInvocation(cue.toCueRange(), reveal),
             ),
         )
-    suspend fun loadSasayakiChapter(chapterIndex: Int, restoreCue: SasayakiMatch? = null): Boolean? {
+    suspend fun loadSasayakiChapter(
+        chapterIndex: Int,
+        initialProgress: Double = 0.0,
+        restoreCue: SasayakiMatch? = null,
+    ): Boolean? {
         if (restoreCue != null) {
             pendingSasayakiRestoreCue = PendingSasayakiCue(
                 cue = restoreCue,
@@ -1006,10 +1030,10 @@ fun ReaderWebView(
                 source = SasayakiCueRevealSource.DirectJump,
             )
         }
-        val target = ReaderChapterPosition(index = chapterIndex, progress = 0.0)
+        val target = ReaderChapterPosition(index = chapterIndex, progress = initialProgress)
         readerSasayakiChapterLoadPosition(
             saveStatistics = ::statisticsForSave,
-            jumpToChapterStart = { stateHolder.jumpTo(target) },
+            jumpToTarget = { stateHolder.jumpTo(target) },
             resetStatisticsBaseline = ::resetStatisticsBaseline,
             saveReaderPosition = { position, statistics -> saveReaderPosition(position, statistics) },
         )
@@ -1040,7 +1064,7 @@ fun ReaderWebView(
         val target = ReaderChapterPosition(index = cue.chapterIndex, progress = 0.0)
         readerSasayakiChapterLoadPosition(
             saveStatistics = ::statisticsForSave,
-            jumpToChapterStart = { stateHolder.jumpTo(target) },
+            jumpToTarget = { stateHolder.jumpTo(target) },
             resetStatisticsBaseline = ::resetStatisticsBaseline,
             saveReaderPosition = { position, statistics -> saveReaderPosition(position, statistics) },
         )
@@ -1226,16 +1250,6 @@ fun ReaderWebView(
                 ) {
                     showStops(sasayakiMediaStopsBeforeCue(cue))
                 }
-            } else if (cue.chapterIndex < currentChapterIndex) {
-                val revealedDuringRestore = loadSasayakiChapter(cue.chapterIndex, restoreCue = cue)
-                if (revealedDuringRestore != false) {
-                    return SasayakiCueRevealResult(progress = null, countStatistics = false)
-                }
-                pendingSasayakiRestoreCue = null
-                countFinalStatistics = false
-                if (imageHoldMillis > 0L) {
-                    showStops(sasayakiMediaStopsBeforeCue(cue), countStatistics = false)
-                }
             } else {
                 when (
                     readerSasayakiTargetChapterMediaPolicy(
@@ -1267,7 +1281,15 @@ fun ReaderWebView(
                         showStops(targetMediaRestore.remainingStops, countStatistics = false)
                     }
                     ReaderSasayakiTargetChapterMediaPolicy.DirectRestore -> {
-                        val revealedDuringRestore = loadSasayakiChapter(cue.chapterIndex, restoreCue = cue)
+                        val revealedDuringRestore = loadSasayakiChapter(
+                            chapterIndex = cue.chapterIndex,
+                            initialProgress = readerSasayakiCrossChapterInitialProgress(
+                                book = book,
+                                cue = cue,
+                                currentChapterIndex = currentChapterIndex,
+                            ),
+                            restoreCue = cue,
+                        )
                         if (revealedDuringRestore != false) {
                             return SasayakiCueRevealResult(progress = null, countStatistics = false)
                         }
@@ -1829,7 +1851,14 @@ fun ReaderWebView(
                 null
             },
             onSasayaki = if (sasayakiSettings.enabled && bookRoot != null) {
-                stateHolder::openSasayakiFromMenu
+                {
+                    stateHolder.openSasayakiFromMenu(
+                        sasayakiDefaultSheetTab(
+                            hasAudio = sasayakiPlayer?.hasAudio == true,
+                            hasChapters = sasayakiAudiobookChapters.isNotEmpty(),
+                        ),
+                    )
+                }
             } else {
                 null
             },
@@ -1856,6 +1885,8 @@ fun ReaderWebView(
                 currentPosition = readerPosition.displayedPosition,
                 progressDisplay = progressDisplay,
                 highlights = highlights.orEmpty(),
+                selectedTab = stateHolder.selectedGoToTab,
+                onSelectedTabChange = stateHolder::selectGoToTab,
                 onChapterJump = { target, fragment ->
                     closeLookupPopupsAndSelection()
                     jumpToPositionWithHistory(target, fragment)
@@ -1879,6 +1910,10 @@ fun ReaderWebView(
                     stateHolder.dismissGoTo()
                 },
                 onHighlightDelete = ::removeHighlight,
+                onGalleryImageSelected = { path ->
+                    stateHolder.dismissGoTo()
+                    book.galleryResourceUrl(path)?.let(::openFullscreenImage)
+                },
                 onDismiss = stateHolder::dismissGoTo,
             )
         }
@@ -1899,6 +1934,8 @@ fun ReaderWebView(
                     )
                 },
                 chapters = sasayakiAudiobookChapters,
+                selectedTab = stateHolder.selectedSasayakiTab,
+                onSelectedTabChange = stateHolder::selectSasayakiTab,
                 onSubtitleMatchUpdated = { matchData ->
                     sasayakiMatchData = matchData
                     sasayakiSheetMatchData = matchData
@@ -1954,16 +1991,38 @@ private fun SasayakiMatch.toCueRange(): SasayakiCueRange =
 
 internal fun readerSasayakiChapterLoadPosition(
     saveStatistics: () -> List<ReadingStatistics>?,
-    jumpToChapterStart: () -> ReaderChapterPosition,
+    jumpToTarget: () -> ReaderChapterPosition,
     resetStatisticsBaseline: () -> Unit,
     saveReaderPosition: (ReaderChapterPosition, List<ReadingStatistics>?) -> Unit,
 ): ReaderChapterPosition {
     val statistics = saveStatistics()
-    val savedPosition = jumpToChapterStart()
+    val savedPosition = jumpToTarget()
     saveReaderPosition(savedPosition, statistics)
     resetStatisticsBaseline()
     return savedPosition
 }
+
+internal fun readerSasayakiCueProgress(
+    book: EpubBook,
+    cue: SasayakiMatch,
+): Double {
+    val chapter = book.chapters.getOrNull(cue.chapterIndex) ?: return 0.0
+    val chapterCount = book.bookInfo.chapterInfo[chapter.href]?.chapterCount
+        ?.takeIf { it > 0 }
+        ?: return 0.0
+    return cue.start.toDouble().div(chapterCount).coerceIn(0.0, 1.0)
+}
+
+internal fun readerSasayakiCrossChapterInitialProgress(
+    book: EpubBook,
+    cue: SasayakiMatch,
+    currentChapterIndex: Int,
+): Double =
+    if (cue.chapterIndex < currentChapterIndex) {
+        readerSasayakiCueProgress(book, cue)
+    } else {
+        0.0
+    }
 
 private data class PendingSasayakiCue(
     val cue: SasayakiMatch,

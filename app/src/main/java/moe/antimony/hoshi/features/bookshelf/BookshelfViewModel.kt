@@ -518,6 +518,7 @@ internal class BookshelfViewModel : ViewModel {
         runLoading(
             errorPrefix = UiText.Resource(R.string.bookshelf_sync_failed),
             blockingProgressMessage = UiText.Resource(R.string.bookshelf_syncing),
+            replaceShelfWithLoading = false,
             block = {
                 val result = repository.syncBook(
                     entry = entry,
@@ -526,7 +527,9 @@ internal class BookshelfViewModel : ViewModel {
                     statsSyncMode = statsSyncMode,
                     syncAudioBook = syncAudioBook,
                 )
-                reloadBookEntriesSync()
+                if (result is SyncResult.Imported) {
+                    refreshBookProgress()
+                }
                 _uiState.update { it.copy(statusMessage = result.bookshelfMessage()) }
             },
         )
@@ -588,6 +591,25 @@ internal class BookshelfViewModel : ViewModel {
 
     private suspend fun loadBookEntries(sortOption: BookSortOption): BookshelfLoadResult =
         repository.loadBooks(sortOption, ::showLegacyBookMigrationProgress)
+
+    private suspend fun refreshBookProgress() {
+        val refreshedProgressById = repository.loadBookProgress(_uiState.value.bookEntries)
+        _uiState.update {
+            val currentBookIds = it.bookEntries.mapTo(mutableSetOf()) { entry -> entry.metadata.id }
+            val progressById = (it.bookProgressById + refreshedProgressById)
+                .filterKeys(currentBookIds::contains)
+            it.copy(
+                bookProgressById = progressById,
+                sections = bookshelfSections(
+                    entries = it.bookEntries,
+                    shelves = it.shelves,
+                    progressById = progressById,
+                    showReading = it.showReading,
+                    sortOption = it.sortOption,
+                ),
+            )
+        }
+    }
 
     private fun showLegacyBookMigrationProgress(progress: LegacyBookMigrationProgress) {
         _uiState.update {
@@ -652,12 +674,13 @@ internal class BookshelfViewModel : ViewModel {
         errorPrefix: UiText,
         onComplete: () -> Unit = {},
         blockingProgressMessage: UiText? = null,
+        replaceShelfWithLoading: Boolean = true,
         block: suspend () -> Unit,
     ) {
         workScope.launch {
             _uiState.update {
                 it.copy(
-                    isLoading = true,
+                    isLoading = replaceShelfWithLoading,
                     blockingProgressMessage = blockingProgressMessage,
                     statusMessage = null,
                     errorMessage = null,

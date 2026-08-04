@@ -1,6 +1,6 @@
 # Hoshi Android Current Architecture
 
-Date: 2026-07-01
+Date: 2026-08-03
 
 This document describes the current architecture that exists in the Android
 repo. It is not a future plan and should not track task status. Long-lived
@@ -46,11 +46,22 @@ refactor goals belong in `docs/ARCHITECTURE_REFACTORING.md`.
   persist the filename in `BookMetadata.epub`. Sidecar JSON and cached covers
   remain beside the EPUB; parser and reader paths extract packed EPUBs only into
   controlled app cache/temp directories when they need the EPUB tree.
+- Bookshelf and Statistics cover rendering uses one process-wide Coil loader.
+  `BookCoverThumbnailStore` owns a versioned, source-fingerprinted 256/512/768 px
+  WebP derivative cache under the app cache directory. Original-cover thumbnail
+  generation is single-flight and serialized; Coil owns measured-size requests,
+  small-thumbnail decode concurrency, lifecycle cancellation, and memory reuse.
+  New local and remote imports prewarm the 768 px derivative, while existing
+  books backfill lazily. Transient derivative-generation or cache failures use
+  the original cover through Coil, and malformed or decoder-rejected
+  derivatives invalidate only their size bucket before the next request
+  rebuilds them.
 - Book metadata, bookmarks, highlights, reading statistics, and Sasayaki data
   are persisted through book sidecar repositories and models.
 - The Statistics dashboard aggregates local book `statistics.json` sidecars
   through a Hilt-backed repository and exposes dashboard state through a
-  Hilt-backed ViewModel.
+  Hilt-backed ViewModel. Reader tracking and the dashboard share an adjusted
+  local-date provider driven by the global minute-level statistics reset time.
 - Book metadata sidecars may include a forced profile id and parsed EPUB
   language. Reader opening resolves the effective profile from forced profile,
   then EPUB language primary profile, then the global active profile.
@@ -93,6 +104,11 @@ refactor goals belong in `docs/ARCHITECTURE_REFACTORING.md`.
 - Reader layout modes are WebView-backed assets for paginated, continuous, and
   VN reading. Kotlin selects the asset, injects typed settings, and keeps
   persisted progress as chapter progress mapped to whole-book character count.
+- Reader `bookinfo.json` sidecars persist whole-book/spine character counts plus
+  optional iOS-compatible TOC fragment offsets and a first-appearance raster
+  image inventory. Contents rows, chapter progress, and chapter time remaining
+  derive from one Kotlin-owned TOC range model; Gallery thumbnails and the
+  fullscreen viewer reuse the existing safe EPUB resource path.
 - Reader text semantics live in `reader-text-semantics.js` and are consumed by
   paginated, continuous, and VN assets for normalization, matchable character
   counting, raw character counting, and matchable-character checks.
@@ -109,9 +125,13 @@ refactor goals belong in `docs/ARCHITECTURE_REFACTORING.md`.
   streams and rendered range mapping. `reader-vn-content-stream.js` owns source
   text/raw offsets, matchable offsets, ruby-aware text entries, structural IDs,
   and standalone media units. `reader-vn-range-map.js` maps VN rendered screens
-  back to raw highlight ranges and matchable Sasayaki ranges. VN keeps its
-  mode-specific block/sentence boundaries, reveal behavior, cross-screen
-  Sasayaki merge, viewport fitting, and current-screen rendering.
+  back to raw highlight ranges, matchable Sasayaki ranges, and source positions.
+  `reader-vn-selection-projection.js` maps current-screen selection hits into
+  the source stream for lookup text, complete sentence context, and normalized
+  offsets, then projects semantic ranges back to the visible clone for popup
+  anchors and underlines. VN keeps its mode-specific block/sentence boundaries,
+  reveal behavior, cross-screen Sasayaki merge, viewport fitting, and
+  current-screen rendering.
 - Paginated and continuous production page/scroll runtime paths remain
   unchanged and are not wired to VN content stream instances or the VN range-map
   module.
@@ -127,7 +147,10 @@ refactor goals belong in `docs/ARCHITECTURE_REFACTORING.md`.
   utilities live in language-named assets such as `language-ja.js`, while
   selection scan policies live in `selection-ja.js` and `selection-en.js`;
   Kotlin loads the utility plus policy selected from `ContentLanguageProfile`,
-  and the Japanese policy owns `scanNonJapaneseText` filtering.
+  and the Japanese policy owns `scanNonJapaneseText` filtering. Shared selection
+  accepts an optional semantic projection; paginated, continuous, and popup use
+  the identity live-DOM path, while VN supplies its source/clone projection and
+  fails closed when a clone hit cannot be mapped.
 - Reader, Dictionary search, and Process Text lookup popups render through the
   shared `reader-popup-host.js` iframe stack and `ReaderLookupPopupWebBridge`.
   Kotlin owns popup payloads, resource handling, and native service bridges for
@@ -138,6 +161,19 @@ refactor goals belong in `docs/ARCHITECTURE_REFACTORING.md`.
 
 ## Integrations
 
+- Current-book cover publishing is an opt-in global platform integration backed
+  by DataStore. After a Reader route finishes loading, a Hilt-backed publisher
+  reuses the extracted book cover and renders it once onto a screen-sized PNG
+  using the persisted Fit, Fill, or Stretch mode. The publisher independently
+  updates the Android lock-screen wallpaper and/or a persisted Storage Access
+  Framework document URI. On compatible iReader firmware, a third target
+  atomically copies the rendered PNG into `/data/zhangyue/logo/book` under a
+  unique name and explicitly notifies iReader SystemUI’s `BOOK` screen-saver
+  backend.
+  The target only publishes while the system `wallpaper_lock_screen_info`
+  setting selects type `2`; it does not write that system setting or impersonate
+  the built-in reader provider. Publishing failures do not block Reader
+  loading, and the integration does not request broad storage access.
 - Anki work stays behind the Anki backend/repository boundary.
 - Anki settings are stored per active profile in
   `Profiles/<profileId>/anki_config.json`; duplicate checks and note creation

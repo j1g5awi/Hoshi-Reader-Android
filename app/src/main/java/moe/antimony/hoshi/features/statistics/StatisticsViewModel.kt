@@ -15,25 +15,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.antimony.hoshi.di.DefaultDispatcher
-
-internal interface StatisticsClock {
-    fun today(): LocalDate
-}
-
-internal class SystemStatisticsClock @Inject constructor() : StatisticsClock {
-    override fun today(): LocalDate = LocalDate.now()
-}
+import moe.antimony.hoshi.features.reader.ReaderSettingsRepository
 
 @HiltViewModel
 internal class StatisticsViewModel internal constructor(
     private val repository: StatisticsRepository,
     private val settings: Flow<StatisticsTargetSettings>,
     private val updateSettings: suspend ((StatisticsTargetSettings) -> StatisticsTargetSettings) -> Unit,
-    private val clock: StatisticsClock,
+    private val resetMinutes: Flow<Int>,
+    private val dateProvider: StatisticsDateProvider,
     private val calculationDispatcher: CoroutineDispatcher,
     private val coroutineScope: CoroutineScope?,
 ) : ViewModel() {
@@ -41,13 +36,15 @@ internal class StatisticsViewModel internal constructor(
     constructor(
         repository: StatisticsRepository,
         settingsRepository: StatisticsSettingsRepository,
-        clock: StatisticsClock,
+        readerSettingsRepository: ReaderSettingsRepository,
+        dateProvider: StatisticsDateProvider,
         @DefaultDispatcher calculationDispatcher: CoroutineDispatcher,
     ) : this(
         repository = repository,
         settings = settingsRepository.settings,
         updateSettings = settingsRepository::update,
-        clock = clock,
+        resetMinutes = readerSettingsRepository.settings.map { it.statisticsResetMinutes },
+        dateProvider = dateProvider,
         calculationDispatcher = calculationDispatcher,
         coroutineScope = null,
     )
@@ -58,12 +55,13 @@ internal class StatisticsViewModel internal constructor(
     private val snapshot = MutableStateFlow(StatisticsSnapshot(days = emptyList(), availableYears = emptyList()))
     private val selection = MutableStateFlow(StatisticsSelectionState())
     private val isLoading = MutableStateFlow(true)
+    private var currentResetMinutes = 0
     private val _uiState = MutableStateFlow(
         buildStatisticsUiState(
             snapshot = snapshot.value,
             settings = StatisticsTargetSettings(),
             selection = selection.value,
-            today = clock.today(),
+            today = currentDate(),
             isLoading = true,
         ),
     )
@@ -73,13 +71,14 @@ internal class StatisticsViewModel internal constructor(
 
     init {
         scope.launch {
-            combine(snapshot, settings, selection, isLoading) { snapshot, settings, selection, isLoading ->
+            combine(snapshot, settings, resetMinutes, selection, isLoading) { snapshot, settings, resetMinutes, selection, isLoading ->
+                currentResetMinutes = resetMinutes
                 withContext(calculationDispatcher) {
                     buildStatisticsUiState(
                         snapshot = snapshot,
                         settings = settings,
                         selection = selection,
-                        today = clock.today(),
+                        today = currentDate(),
                         isLoading = isLoading,
                     )
                 }
@@ -130,7 +129,7 @@ internal class StatisticsViewModel internal constructor(
                 current.copy(
                     windowSelection = event.window,
                     rangeMode = StatisticsRangeMode.Year,
-                    anchorDate = anchorForWindow(snapshot.value, event.window, clock.today()),
+                    anchorDate = anchorForWindow(snapshot.value, event.window, currentDate()),
                     currentRangeTab = current.currentRangeTab,
                 )
             }
@@ -161,6 +160,8 @@ internal class StatisticsViewModel internal constructor(
             }
         }
     }
+
+    private fun currentDate(): LocalDate = dateProvider.currentDate(currentResetMinutes)
 
     private fun updateTargets(transform: (StatisticsTargetSettings) -> StatisticsTargetSettings) {
         scope.launch {

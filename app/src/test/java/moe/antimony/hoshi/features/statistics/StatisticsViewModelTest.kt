@@ -42,6 +42,26 @@ class StatisticsViewModelTest {
     }
 
     @Test
+    fun dashboardUsesConfiguredResetTimeForCurrentStatisticsDay() = runBlocking {
+        viewModel(
+            snapshot = snapshot(),
+            resetMinutes = 105,
+            dateProvider = object : StatisticsDateProvider {
+                override fun currentDate(resetMinutes: Int): LocalDate =
+                    if (resetMinutes == 105) {
+                        LocalDate.parse("2026-06-29")
+                    } else {
+                        LocalDate.parse("2026-06-30")
+                    }
+            },
+        ).use { viewModel ->
+            viewModel.reload()
+
+            assertEquals(LocalDate.parse("2026-06-29"), viewModel.uiState.value.calendar.anchorDate)
+        }
+    }
+
+    @Test
     fun clickingDateFromYearModeSwitchesToDay() = runBlocking {
         viewModel(snapshot = snapshot(day("2026-06-29", characters = 2_000))).use { viewModel ->
             viewModel.reload()
@@ -367,24 +387,32 @@ class StatisticsViewModelTest {
     private fun viewModel(
         snapshot: StatisticsSnapshot,
         settings: StatisticsTargetSettings = StatisticsTargetSettings(),
+        resetMinutes: Int = 0,
+        dateProvider: StatisticsDateProvider = FakeStatisticsDateProvider(LocalDate.parse("2026-06-30")),
     ): ViewModelHandle =
         viewModel(
             repository = FakeStatisticsRepository(snapshot),
             settings = settings,
+            resetMinutes = resetMinutes,
+            dateProvider = dateProvider,
         )
 
     private fun viewModel(
         repository: StatisticsRepository,
         settings: StatisticsTargetSettings = StatisticsTargetSettings(),
+        resetMinutes: Int = 0,
+        dateProvider: StatisticsDateProvider = FakeStatisticsDateProvider(LocalDate.parse("2026-06-30")),
     ): ViewModelHandle {
         val scope = CoroutineScope(Dispatchers.Unconfined + Job())
         val settingsFlow = MutableStateFlow(settings)
+        val resetMinutesFlow = MutableStateFlow(resetMinutes)
         return ViewModelHandle(
             StatisticsViewModel(
                 repository = repository,
                 settings = settingsFlow,
                 updateSettings = { transform -> settingsFlow.value = transform(settingsFlow.value) },
-                clock = FakeStatisticsClock(LocalDate.parse("2026-06-30")),
+                resetMinutes = resetMinutesFlow,
+                dateProvider = dateProvider,
                 calculationDispatcher = Dispatchers.Unconfined,
                 coroutineScope = scope,
             ),
@@ -419,10 +447,10 @@ class StatisticsViewModelTest {
             pendingLoads.removeFirst().await()
     }
 
-    private class FakeStatisticsClock(
-        private val today: LocalDate,
-    ) : StatisticsClock {
-        override fun today(): LocalDate = today
+    private class FakeStatisticsDateProvider(
+        private val date: LocalDate,
+    ) : StatisticsDateProvider {
+        override fun currentDate(resetMinutes: Int): LocalDate = date
     }
 
     private fun snapshot(vararg days: StatisticsDayAggregate): StatisticsSnapshot =

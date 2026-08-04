@@ -85,6 +85,7 @@ data class ReaderSettings(
     val enableStatistics: Boolean = false,
     val showStatisticsTab: Boolean = true,
     val statisticsAutostartMode: StatisticsAutostartMode = StatisticsAutostartMode.Off,
+    val statisticsResetMinutes: Int = 0,
     val statisticsSyncEnabled: Boolean = false,
     val statisticsSyncMode: StatisticsSyncMode = StatisticsSyncMode.Merge,
     val showStatisticsToggle: Boolean = false,
@@ -103,6 +104,8 @@ data class ReaderSettings(
     val characterSpacing: Double = 0.0,
     val paragraphSpacing: Double = 0.0,
     val showTitle: Boolean = true,
+    val showProgress: Boolean = true,
+    val showChapterProgress: Boolean = false,
     val showCharacters: Boolean = true,
     val showPercentage: Boolean = true,
     val alwaysShowProgress: Boolean = true,
@@ -366,6 +369,8 @@ class ReaderSettingsStore(context: Context) : ReaderSettingsLegacySource {
         characterSpacing = preferences.getFloat("characterSpacing", 0f).toDouble(),
         paragraphSpacing = preferences.getFloat("paragraphSpacing", 0f).toDouble(),
         showTitle = preferences.getBoolean("readerShowTitle", true),
+        showProgress = preferences.getBoolean("readerShowProgress", true),
+        showChapterProgress = preferences.getBoolean("readerShowChapterProgress", false),
         showCharacters = preferences.getBoolean("readerShowCharacters", true),
         showPercentage = preferences.getBoolean("readerShowPercentage", true),
         alwaysShowProgress = preferences.getBoolean("readerAlwaysShowProgress", true),
@@ -434,6 +439,8 @@ class ReaderSettingsStore(context: Context) : ReaderSettingsLegacySource {
             .putFloat("characterSpacing", settings.characterSpacing.toFloat())
             .putFloat("paragraphSpacing", settings.paragraphSpacing.toFloat())
             .putBoolean("readerShowTitle", settings.showTitle)
+            .putBoolean("readerShowProgress", settings.showProgress)
+            .putBoolean("readerShowChapterProgress", settings.showChapterProgress)
             .putBoolean("readerShowCharacters", settings.showCharacters)
             .putBoolean("readerShowPercentage", settings.showPercentage)
             .putBoolean("readerAlwaysShowProgress", settings.alwaysShowProgress)
@@ -562,6 +569,7 @@ class ReaderSettingsRepository(
             enableStatistics = this[KEY_ENABLE_STATISTICS] ?: false,
             showStatisticsTab = this[KEY_SHOW_STATISTICS_TAB] ?: true,
             statisticsAutostartMode = StatisticsAutostartMode.fromRawValue(this[KEY_STATISTICS_AUTOSTART_MODE]),
+            statisticsResetMinutes = this[KEY_STATISTICS_RESET_MINUTES] ?: 0,
             statisticsSyncEnabled = this[KEY_STATISTICS_SYNC_ENABLED] ?: false,
             statisticsSyncMode = StatisticsSyncMode.fromRawValue(this[KEY_STATISTICS_SYNC_MODE]),
             showStatisticsToggle = this[KEY_SHOW_STATISTICS_TOGGLE] ?: false,
@@ -582,6 +590,8 @@ class ReaderSettingsRepository(
             characterSpacing = (this[KEY_CHARACTER_SPACING] ?: 0f).toDouble(),
             paragraphSpacing = (this[KEY_PARAGRAPH_SPACING] ?: 0f).toDouble(),
             showTitle = this[KEY_SHOW_TITLE] ?: true,
+            showProgress = this[KEY_SHOW_PROGRESS] ?: true,
+            showChapterProgress = this[KEY_SHOW_CHAPTER_PROGRESS] ?: false,
             showCharacters = this[KEY_SHOW_CHARACTERS] ?: true,
             showPercentage = this[KEY_SHOW_PERCENTAGE] ?: true,
             alwaysShowProgress = this[KEY_ALWAYS_SHOW_PROGRESS] ?: true,
@@ -631,6 +641,7 @@ class ReaderSettingsRepository(
         this[KEY_ENABLE_STATISTICS] = settings.enableStatistics
         this[KEY_SHOW_STATISTICS_TAB] = settings.showStatisticsTab
         this[KEY_STATISTICS_AUTOSTART_MODE] = settings.statisticsAutostartMode.rawValue
+        this[KEY_STATISTICS_RESET_MINUTES] = settings.statisticsResetMinutes
         this[KEY_STATISTICS_SYNC_ENABLED] = settings.statisticsSyncEnabled
         this[KEY_STATISTICS_SYNC_MODE] = settings.statisticsSyncMode.rawValue
         this[KEY_SHOW_STATISTICS_TOGGLE] = settings.showStatisticsToggle
@@ -649,6 +660,8 @@ class ReaderSettingsRepository(
         this[KEY_CHARACTER_SPACING] = settings.characterSpacing.toFloat()
         this[KEY_PARAGRAPH_SPACING] = settings.paragraphSpacing.toFloat()
         this[KEY_SHOW_TITLE] = settings.showTitle
+        this[KEY_SHOW_PROGRESS] = settings.showProgress
+        this[KEY_SHOW_CHAPTER_PROGRESS] = settings.showChapterProgress
         this[KEY_SHOW_CHARACTERS] = settings.showCharacters
         this[KEY_SHOW_PERCENTAGE] = settings.showPercentage
         this[KEY_ALWAYS_SHOW_PROGRESS] = settings.alwaysShowProgress
@@ -678,6 +691,7 @@ class ReaderSettingsRepository(
         this[KEY_ENABLE_STATISTICS] = settings.enableStatistics
         this[KEY_SHOW_STATISTICS_TAB] = settings.showStatisticsTab
         this[KEY_STATISTICS_AUTOSTART_MODE] = settings.statisticsAutostartMode.rawValue
+        this[KEY_STATISTICS_RESET_MINUTES] = settings.statisticsResetMinutes
         this[KEY_STATISTICS_SYNC_ENABLED] = settings.statisticsSyncEnabled
         this[KEY_STATISTICS_SYNC_MODE] = settings.statisticsSyncMode.rawValue
         this[KEY_VOLUME_KEYS_TURN_PAGES] = settings.volumeKeysTurnPages
@@ -749,6 +763,7 @@ class ReaderSettingsRepository(
         private val KEY_ENABLE_STATISTICS = booleanPreferencesKey("enableStatistics")
         private val KEY_SHOW_STATISTICS_TAB = booleanPreferencesKey("showStatisticsTab")
         private val KEY_STATISTICS_AUTOSTART_MODE = stringPreferencesKey("statisticsAutostartMode")
+        private val KEY_STATISTICS_RESET_MINUTES = intPreferencesKey("statisticsResetMinutes")
         private val KEY_STATISTICS_SYNC_ENABLED = booleanPreferencesKey("statisticsEnableSync")
         private val KEY_STATISTICS_SYNC_MODE = stringPreferencesKey("statisticsSyncMode")
         private val KEY_SHOW_STATISTICS_TOGGLE = booleanPreferencesKey("readerShowStatisticsToggle")
@@ -767,6 +782,8 @@ class ReaderSettingsRepository(
         private val KEY_CHARACTER_SPACING = floatPreferencesKey("characterSpacing")
         private val KEY_PARAGRAPH_SPACING = floatPreferencesKey("paragraphSpacing")
         private val KEY_SHOW_TITLE = booleanPreferencesKey("readerShowTitle")
+        private val KEY_SHOW_PROGRESS = booleanPreferencesKey("readerShowProgress")
+        private val KEY_SHOW_CHAPTER_PROGRESS = booleanPreferencesKey("readerShowChapterProgress")
         private val KEY_SHOW_CHARACTERS = booleanPreferencesKey("readerShowCharacters")
         private val KEY_SHOW_PERCENTAGE = booleanPreferencesKey("readerShowPercentage")
         private val KEY_ALWAYS_SHOW_PROGRESS = booleanPreferencesKey("readerAlwaysShowProgress")
@@ -837,6 +854,8 @@ private data class ProfileReaderAppearanceSettings(
     val characterSpacing: Double = 0.0,
     val paragraphSpacing: Double = 0.0,
     val showTitle: Boolean = true,
+    val showProgress: Boolean = true,
+    val showChapterProgress: Boolean = false,
     val showCharacters: Boolean = true,
     val showPercentage: Boolean = true,
     val alwaysShowProgress: Boolean = true,
@@ -892,6 +911,8 @@ private fun ReaderSettings.toProfileAppearanceSettings(): ProfileReaderAppearanc
         characterSpacing = characterSpacing,
         paragraphSpacing = paragraphSpacing,
         showTitle = showTitle,
+        showProgress = showProgress,
+        showChapterProgress = showChapterProgress,
         showCharacters = showCharacters,
         showPercentage = showPercentage,
         alwaysShowProgress = alwaysShowProgress,
@@ -950,6 +971,8 @@ private fun ReaderSettings.withProfileAppearance(appearance: ProfileReaderAppear
         characterSpacing = appearance.characterSpacing,
         paragraphSpacing = appearance.paragraphSpacing,
         showTitle = appearance.showTitle,
+        showProgress = appearance.showProgress,
+        showChapterProgress = appearance.showChapterProgress,
         showCharacters = appearance.showCharacters,
         showPercentage = appearance.showPercentage,
         alwaysShowProgress = appearance.alwaysShowProgress,

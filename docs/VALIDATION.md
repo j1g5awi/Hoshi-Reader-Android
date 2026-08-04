@@ -94,8 +94,22 @@ Manual reader validation should cover:
 - paginated, continuous, and VN modes in vertical and horizontal writing.
 - VN block and sentence screens, reveal speed 0/45/120, blank-area click
   advance, text lookup taps, links, images, restore, and chapter boundaries.
+- VN cross-screen lookup with a word split at the current-screen boundary:
+  verify the lookup text continues into later screens, the mined sentence
+  includes the complete source sentence, `sentenceOffset`/Sasayaki alignment
+  stays chapter-relative, and the underline/popup anchor uses only the visible
+  current-screen intersection. Repeat for block and sentence modes, large-font
+  viewport splitting, horizontal and vertical writing, ruby and supplementary
+  characters, and both incomplete and completed reveal.
 - long text page turns, chapter-list jumps into mid-book chapters, and bookmark
   restore.
+- Contents with nested and percent-encoded TOC fragments that share one XHTML
+  file: verify distinct row positions/current selection, true chapter progress
+  and time remaining, jump/restore behavior, and Gallery first-appearance order.
+  Include duplicate, gaiji, SVG, missing, and absent images; Gallery items must
+  open the existing fullscreen copy/save/share viewer. Verify the tabs appear as
+  Chapters, Highlights, Gallery, Search and none of their scrolling content
+  stretches or glows past either edge.
 - forward and backward chapter boundaries, including reverse landing at the
   previous chapter end.
 - page progress monotonicity, per-page progress updates, and restore landing
@@ -109,7 +123,35 @@ Manual reader validation should cover:
 - reader chrome behavior: focus mode, transient system bars, Android Back
   revealing chrome before closing, bottom progress band, title/back-button
   settings, compact bottom buttons, and progress indicators hidden from the text
-  area when configured.
+  area when configured. With whole-book and chapter progress both enabled,
+  verify the top bubble stays on one line and the transient bottom bubble shows
+  two complete lines.
+- statistics reset time at 00:00 and a non-midnight minute boundary, including
+  both sides of the boundary, app restart, a system time-zone change, and the
+  Statistics dashboard using the same adjusted Today date.
+- active statistics tracking while opening and dismissing Appearance, Contents,
+  Statistics, Sasayaki, and fullscreen images. Modal time and character jumps
+  must not be counted; overlapping surfaces and lifecycle stop/start must not
+  resume tracking until every visible surface is closed.
+- current-book cover publishing when enabled: opening two different books
+  updates only the lock-screen wallpaper in sequence; fixed-file export keeps
+  the same SAF document URI while replacing its PNG contents; missing covers,
+  revoked URI grants, and device wallpaper restrictions leave Reader usable and
+  report a localized failure. On compatible E-ink hardware, select the exported
+  file in the vendor sleep-screen tool and confirm the next suspend rereads it.
+  Also switch books rapidly while a wallpaper update is in flight and verify
+  the newest cover wins. With portrait, landscape, very wide, and very tall
+  covers, verify Fit shows the full cover with white padding, Fill preserves
+  proportions while center-cropping, and Stretch fills the screen without
+  preserving proportions; repeat in portrait, landscape, and split-screen. On
+  compatible iReader firmware, first open any book in iReader’s built-in
+  reader, then select the system Book Cover screen saver and tap Apply. Enable
+  Hoshi’s iReader integration and open two books. Confirm
+  `/data/zhangyue/logo/book` contains one newly named `.png` after each open and
+  that the visible sleep screen changes without reapplying it in system
+  settings. Repeat once with SELinux enforcing when the firmware supports it;
+  vendor directory permissions or policy denial must leave Reader usable and
+  report a localized failure.
 
 For reader pagination bugs, inspect WebView metrics such as `scrollTop`,
 `scrollHeight`, and `clientHeight`. If a page can still scroll but native
@@ -196,6 +238,9 @@ emulator state without clearing data or reimporting.
 
 Validate relevant settings/theme changes with:
 
+- Compose scrolling surfaces across Bookshelf, Contents, Statistics, Settings,
+  and modal sheets do not stretch or glow past either edge; normal scrolling,
+  flinging, pull-to-refresh, and sheet dragging remain available.
 - settings controls update immediately and route changes avoid fade transitions
   on E-ink displays.
 - dark-theme cold start does not show a light `No Books` frame before bookshelf

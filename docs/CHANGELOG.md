@@ -8,6 +8,49 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ### Added
 
+- Add a Reader image gallery, true table-of-contents chapter ranges, and optional
+  current-chapter progress in Reader chrome and statistics.
+- Add a configurable daily statistics reset time and pause reading statistics
+  while Reader sheets or fullscreen images are open.
+- Add optional current-book cover publishing for the Android lock screen and a
+  fixed PNG file used by compatible E-ink sleep-screen tools, plus direct
+  integration with iReader’s built-in Book Cover screen saver on compatible
+  domestic and Musnap overseas firmware using standard PNG output, with Fit,
+  Fill, and Stretch scaling modes.
+
+### Changed
+
+- Rename the Reader Go to panel to Contents, order its tabs as Chapters,
+  Highlights, Gallery, and Search, and remove overscroll deformation from
+  scrolling surfaces throughout the app.
+
+### Fixed
+
+- Keep Reader progress, search, and Sasayaki character offsets stable around
+  numeric HTML entities, and keep lookup sentence expansion and recursive
+  expression-tag scanning within the selected text boundary.
+- Keep manual bookshelf sync from rebuilding the entire shelf, while refreshing
+  imported reading progress in place.
+- Keep large bookshelves smooth during repeated scrolling by reusing
+  size-appropriate persistent cover thumbnails instead of decoding original
+  covers again after they leave memory, while recovering from transient
+  generation failures or damaged thumbnail-cache entries without hiding valid
+  covers.
+- Remember the selected Contents and Sasayaki tabs for the current Reader
+  session, and keep Sasayaki on the current tab after importing an audiobook.
+- Keep VN lookups and mined Anki sentences complete when a word or sentence
+  continues onto a later screen.
+- Keep Anki audio, book covers, Sasayaki clips, and dictionary media from
+  overwriting different exported media by using content-specific filenames.
+- Keep dictionary definitions in the configured dictionary order when an
+  inflected lookup merges multiple deinflection candidates.
+- Keep Sasayaki jumps to cues in the previous chapter from counting the target
+  chapter in the current reading session when image holding is enabled.
+
+## [v1.3.1] - 2026-07-11
+
+### Added
+
 - Add a Reader Appearance setting for top safe area height.
 
 ### Changed

@@ -305,8 +305,8 @@
     <string name="reader_jump_back">返回上一个跳转位置</string>
     <string name="reader_jump_forward">返回后一个跳转位置</string>
     <string name="reader_menu">阅读器菜单</string>
-    <string name="reader_go_to">跳转</string>
-    <string name="reader_search" comment="Reader Go to panel tab label, distinct from dictionary search placeholder.">搜索</string>
+    <string name="reader_go_to">内容</string>
+    <string name="reader_search" comment="Reader Contents panel tab label, distinct from dictionary search placeholder.">搜索</string>
     <string name="reader_search_in_book">在书中搜索</string>
     <string name="reader_search_empty_prompt">输入文本搜索本书</string>
     <string name="reader_searching">正在搜索...</string>
@@ -321,6 +321,9 @@
     <string name="reader_image_saved">已保存图片。</string>
     <string name="reader_image_save_failed">无法保存图片。</string>
     <string name="reader_chapters" comment="Reader chapter-list label; Sasayaki intentionally reuses the same visible label for audiobook chapters.">章节</string>
+    <string name="reader_gallery">图库</string>
+    <string name="reader_gallery_image">图库图片</string>
+    <string name="reader_no_images">没有图片</string>
     <string name="reader_highlights">标注</string>
     <string name="reader_statistics" comment="Reader menu label, intentionally matching advanced statistics.">统计</string>
     <string name="reader_untitled_chapter">未命名</string>
@@ -343,6 +346,7 @@
     <string name="reader_statistics_reading_time">阅读时间：</string>
     <string name="reader_statistics_show_tab">显示统计标签页</string>
     <string name="reader_statistics_autostart">自动开始</string>
+    <string name="reader_statistics_reset_time">重置时间</string>
     <string name="reader_statistics_autostart_off" comment="Reader statistics autostart setting value; intentionally matches other off labels.">关闭</string>
     <string name="reader_statistics_autostart_page_turn">翻页时</string>
     <string name="reader_statistics_autostart_on">开启</string>
@@ -354,6 +358,7 @@
     <string name="reader_appearance_text">文本</string>
     <string name="reader_appearance_layout">布局</string>
     <string name="reader_appearance_display">显示</string>
+    <string name="reader_appearance_progress">进度</string>
     <string name="reader_appearance_popup">弹窗</string>
     <string name="reader_appearance_theme_system">跟随系统</string>
     <string name="reader_appearance_theme_light">浅色</string>
@@ -408,6 +413,8 @@
     <string name="reader_appearance_character_spacing">字距</string>
     <string name="reader_appearance_paragraph_spacing">段落间距</string>
     <string name="reader_appearance_show_title">显示标题</string>
+    <string name="reader_appearance_show_progress">显示进度</string>
+    <string name="reader_appearance_show_chapter_progress">显示章节进度</string>
     <string name="reader_appearance_show_character_count">显示字符数</string>
     <string name="reader_appearance_show_word_count">显示单词数</string>
     <string name="reader_appearance_show_percentage">显示百分比</string>
@@ -681,4 +688,31 @@
     <string name="sasayaki_no_file_selected">未选择文件</string>
     <string name="sasayaki_search_window">搜索窗口</string>
     <string name="sasayaki_matching">正在匹配...</string>
+    <string name="settings_book_cover_wallpaper">书籍封面锁屏</string>
+    <string name="settings_book_cover_wallpaper_subtitle">锁屏或休眠时显示当前书籍封面</string>
+    <string name="book_cover_wallpaper_lock_screen">更新锁屏壁纸</string>
+    <string name="book_cover_wallpaper_lock_screen_summary">每次打开书籍时，将当前封面设为 Android 锁屏壁纸。部分墨水屏设备可能不生效。</string>
+    <string name="book_cover_wallpaper_not_supported">此设备不支持锁屏壁纸。</string>
+    <string name="book_cover_wallpaper_not_allowed">设备策略不允许此应用更改壁纸。</string>
+    <string name="book_cover_wallpaper_ireader">更新 iReader 书籍封面屏保</string>
+    <string name="book_cover_wallpaper_ireader_summary">每次打开书籍时，更新 iReader 内建的“书籍封面”屏保。</string>
+    <string name="book_cover_wallpaper_ireader_select_system_option">请先用 iReader 内建阅读器打开任意书籍，再到设备的屏保设置中选择“书籍封面”并点击“应用”，然后返回 Hoshi。</string>
+    <string name="book_cover_wallpaper_ireader_not_supported">此设备或固件不支持 iReader 私有屏保集成。</string>
+    <string name="book_cover_wallpaper_ireader_not_selected_error">无法更新 iReader 屏保。请先用内建阅读器打开任意书籍，再到设备的屏保设置中选择“书籍封面”并点击“应用”。</string>
+    <string name="book_cover_wallpaper_vendor_integrations">墨水屏厂商适配</string>
+    <string name="book_cover_wallpaper_vendor_integrations_summary">这里的选项专门适配部分墨水屏厂商，后续可能增加更多厂商。</string>
+    <string name="book_cover_wallpaper_export">导出固定封面图片</string>
+    <string name="book_cover_wallpaper_export_summary">每次打开书籍时覆盖同一个 PNG 文件。请在阅读器的休眠屏幕设置中选择该文件。</string>
+    <string name="book_cover_wallpaper_export_file">导出文件</string>
+    <string name="book_cover_wallpaper_export_file_none">未选择封面文件</string>
+    <string name="book_cover_wallpaper_export_file_failed">无法获得所选文件的写入权限，请选择其他文件。</string>
+    <string name="book_cover_wallpaper_change_file">更改文件</string>
+    <string name="book_cover_wallpaper_publish_failed">书籍已打开，但无法发布当前书籍封面。</string>
+    <string name="book_cover_scale_mode">封面缩放</string>
+    <string name="book_cover_scale_fit">适应</string>
+    <string name="book_cover_scale_fit_summary">完整显示封面，未使用的区域填充为白色。</string>
+    <string name="book_cover_scale_fill">填充</string>
+    <string name="book_cover_scale_fill_summary">保持原始比例填满屏幕，并裁切超出的部分。</string>
+    <string name="book_cover_scale_stretch">拉伸</string>
+    <string name="book_cover_scale_stretch_summary">不保持封面原始比例，直接填满屏幕。</string>
 </resources>

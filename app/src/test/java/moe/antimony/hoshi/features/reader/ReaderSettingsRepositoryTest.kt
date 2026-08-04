@@ -71,6 +71,7 @@ class ReaderSettingsRepositoryTest {
             assertFalse(settings.enableStatistics)
             assertTrue(settings.showStatisticsTab)
             assertEquals(StatisticsAutostartMode.Off, settings.statisticsAutostartMode)
+            assertEquals(0, settings.statisticsResetMinutes)
             assertFalse(settings.showStatisticsToggle)
             assertFalse(settings.showReadingSpeed)
             assertFalse(settings.showReadingTime)
@@ -86,6 +87,8 @@ class ReaderSettingsRepositoryTest {
             assertEquals(0.0, settings.characterSpacing, 0.0)
             assertEquals(0.0, settings.paragraphSpacing, 0.0)
             assertTrue(settings.showTitle)
+            assertTrue(settings.showProgress)
+            assertFalse(settings.showChapterProgress)
             assertTrue(settings.showCharacters)
             assertTrue(settings.showPercentage)
             assertTrue(settings.alwaysShowProgress)
@@ -207,6 +210,8 @@ class ReaderSettingsRepositoryTest {
                     characterSpacing = 0.03,
                     paragraphSpacing = 1.7,
                     showTitle = false,
+                    showProgress = false,
+                    showChapterProgress = true,
                     showCharacters = false,
                     showPercentage = false,
                     alwaysShowProgress = false,
@@ -268,6 +273,8 @@ class ReaderSettingsRepositoryTest {
             assertEquals(0.03, saved.characterSpacing, 0.000001)
             assertEquals(1.7, saved.paragraphSpacing, 0.000001)
             assertFalse(saved.showTitle)
+            assertFalse(saved.showProgress)
+            assertTrue(saved.showChapterProgress)
             assertFalse(saved.showCharacters)
             assertFalse(saved.showPercentage)
             assertFalse(saved.alwaysShowProgress)
@@ -297,6 +304,15 @@ class ReaderSettingsRepositoryTest {
             val saved = repository.settings.first()
 
             assertEquals(2.0, saved.popupScale, 0.000001)
+        }
+    }
+
+    @Test
+    fun statisticsResetMinutesPersistAsMinuteOfDay() = runBlocking {
+        repository().use { repository ->
+            repository.update { it.copy(statisticsResetMinutes = 105) }
+
+            assertEquals(105, repository.settings.first().statisticsResetMinutes)
         }
     }
 

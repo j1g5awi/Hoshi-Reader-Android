@@ -42,6 +42,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import moe.antimony.hoshi.features.sync.resolveTtuCharacterPosition
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import java.text.Collator
 import java.util.Locale
 import java.util.UUID
@@ -52,6 +53,7 @@ internal interface BookshelfRepository {
         sortOption: BookSortOption,
         onLegacyBookMigrationProgress: (LegacyBookMigrationProgress) -> Unit = {},
     ): BookshelfLoadResult
+    suspend fun loadBookProgress(entries: List<BookEntry>): Map<String, Double>
     suspend fun loadRemoteBooks(localEntries: List<BookEntry>): RemoteBookshelfLoadResult
     suspend fun openBook(entry: BookEntry): String
     suspend fun importBook(uri: Uri): String
@@ -97,6 +99,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
     private val driveAuthorizer: DriveAuthorizer,
     private val ttuBookDataConverter: TtuBookDataConverter,
     private val bookParser: EpubBookParser,
+    private val bookCoverThumbnailStore: BookCoverThumbnailStore,
     @param:CacheDir private val cacheDir: File,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : BookshelfRepository {
@@ -113,6 +116,10 @@ internal class AndroidBookshelfRepository @Inject constructor(
             shelves = shelves,
             settings = settingsRepository.settings.first(),
         )
+    }
+
+    override suspend fun loadBookProgress(entries: List<BookEntry>): Map<String, Double> = withContext(ioDispatcher) {
+        loadBookProgressById(entries, bookRepository)
     }
 
     override suspend fun loadRemoteBooks(localEntries: List<BookEntry>): RemoteBookshelfLoadResult = withContext(ioDispatcher) {
@@ -147,6 +154,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
         val parsedBook = bookParser.parse(root)
         saveMetadata(root, parsedBook, bookRepository.loadMetadata(root))
         saveBookInfo(root, parsedBook)
+        prewarmBookCover(root)
         readerBookId(root)
     }
 
@@ -173,6 +181,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
             }
             val imported = ttuBookDataConverter.importBookData(tempRoot)
             importRemoteSidecars(imported, entry, syncStats, syncAudioBook)
+            prewarmBookCover(imported.root)
             readerBookId(imported.root)
         } finally {
             tempRoot.delete()
@@ -309,6 +318,18 @@ internal class AndroidBookshelfRepository @Inject constructor(
 
     private suspend fun saveBookInfo(root: File, parsedBook: EpubBook) {
         bookRepository.saveBookInfo(root, parsedBook.bookInfo)
+    }
+
+    private suspend fun prewarmBookCover(root: File) {
+        try {
+            val metadata = bookRepository.loadMetadata(root) ?: return
+            val cover = bookRepository.coverFile(BookEntry(root, metadata)) ?: return
+            bookCoverThumbnailStore.thumbnail(cover.toBookCoverSource(), requestedMaxDimensionPx = 768)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Cover prewarming is opportunistic and must not make a successful import fail.
+        }
     }
 
     private suspend fun loadRemoteBookEntries(localEntries: List<BookEntry>): List<RemoteBookEntry> {

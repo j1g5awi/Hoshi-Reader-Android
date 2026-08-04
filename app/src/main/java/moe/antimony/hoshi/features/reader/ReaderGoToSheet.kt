@@ -76,6 +76,7 @@ import moe.antimony.hoshi.ui.rememberSyncedTextFieldState
 internal enum class ReaderGoToTab {
     Chapters,
     Highlights,
+    Gallery,
     Search,
 }
 
@@ -89,14 +90,16 @@ internal fun ReaderGoToSheet(
     currentPosition: ReaderChapterPosition,
     progressDisplay: ReaderProgressDisplay,
     highlights: List<ReaderHighlight>,
+    selectedTab: ReaderGoToTab,
+    onSelectedTabChange: (ReaderGoToTab) -> Unit,
     onChapterJump: (ReaderChapterPosition, String?) -> Unit,
     onCharacterJump: (Int) -> Unit,
     onSearchResultJump: (ReaderSearchResult) -> Unit,
     onHighlightJump: (ReaderHighlight) -> Unit,
     onHighlightDelete: (ReaderHighlight) -> Unit,
+    onGalleryImageSelected: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(readerGoToDefaultTab()) }
     var showJumpDialog by remember { mutableStateOf(false) }
     val coverBitmap = remember(book) { book.decodeCoverImageBitmap() }
     val searchState = remember(book) { ReaderSearchSheetState() }
@@ -141,7 +144,7 @@ internal fun ReaderGoToSheet(
         )
         ReaderGoToTabs(
             selectedTab = selectedTab,
-            onSelectedTabChange = { selectedTab = it },
+            onSelectedTabChange = onSelectedTabChange,
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
         )
         when (selectedTab) {
@@ -164,6 +167,11 @@ internal fun ReaderGoToSheet(
                 progressDisplay = progressDisplay,
                 totalCharacters = book.bookInfo.characterCount,
                 onJump = onSearchResultJump,
+                modifier = Modifier.weight(1f),
+            )
+            ReaderGoToTab.Gallery -> ReaderGalleryTab(
+                book = book,
+                onImageSelected = onGalleryImageSelected,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -235,6 +243,7 @@ private fun ReaderGoToTabs(
                 ReaderGoToTab.Search -> stringResource(R.string.reader_search)
                 ReaderGoToTab.Chapters -> stringResource(R.string.reader_chapters)
                 ReaderGoToTab.Highlights -> stringResource(R.string.reader_highlights)
+                ReaderGoToTab.Gallery -> stringResource(R.string.reader_gallery)
             }
             Box(
                 modifier = Modifier
@@ -517,7 +526,8 @@ private fun ReaderGoToChaptersTab(
     onJump: (ReaderChapterPosition, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rows = remember(book, currentPosition.index) { book.chapterRows(currentPosition.index) }
+    val currentCharacter = book.characterCountAt(currentPosition.index, currentPosition.progress)
+    val rows = remember(book, currentCharacter) { book.chapterRows(currentCharacter) }
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()

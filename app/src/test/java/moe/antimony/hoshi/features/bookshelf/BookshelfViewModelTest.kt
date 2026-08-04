@@ -814,6 +814,101 @@ class BookshelfViewModelTest {
     }
 
     @Test
+    fun manualSyncKeepsLoadedShelfMountedWithoutReloadingBooksLikeIos() {
+        val entry = bookEntry("book-a")
+        val continueSync = CompletableDeferred<Unit>()
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            syncGate = continueSync,
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        repository.loadRequests.clear()
+
+        viewModel.syncBook(
+            entry = entry,
+            direction = SyncDirection.ExportToTtu,
+            syncStats = false,
+            statsSyncMode = StatisticsSyncMode.Merge,
+            syncAudioBook = false,
+        )
+
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertEquals(listOf(entry), viewModel.uiState.value.bookEntries)
+        assertEquals("Syncing...", viewModel.uiState.value.blockingProgressMessage.testString())
+
+        continueSync.complete(Unit)
+
+        assertTrue(repository.loadRequests.isEmpty())
+        assertTrue(repository.progressLoadRequests.isEmpty())
+        assertNull(viewModel.uiState.value.blockingProgressMessage.testString())
+    }
+
+    @Test
+    fun importedSyncRefreshesProgressWithoutReloadingBooksLikeIos() {
+        val entry = bookEntry("book-a")
+        val repository = FakeBookshelfRepository(
+            entries = listOf(entry),
+            progressById = mapOf("book-a" to 0.0),
+            settings = BookshelfSettings(showReading = true),
+            syncResult = SyncResult.Imported("book-a", characterCount = 100),
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+        repository.loadRequests.clear()
+        repository.progressById = mapOf("book-a" to 0.75)
+
+        viewModel.syncBook(
+            entry = entry,
+            direction = SyncDirection.ImportFromTtu,
+            syncStats = false,
+            statsSyncMode = StatisticsSyncMode.Merge,
+            syncAudioBook = false,
+        )
+
+        assertEquals(mapOf("book-a" to 0.75), viewModel.uiState.value.bookProgressById)
+        assertTrue(repository.loadRequests.isEmpty())
+        assertEquals(listOf(listOf("book-a")), repository.progressLoadRequests)
+        assertEquals(
+            listOf(entry),
+            viewModel.uiState.value.sections.single { it.isReading }.books,
+        )
+    }
+
+    @Test
+    fun importedSyncProgressRefreshDoesNotDropBooksAddedByConcurrentReload() {
+        val first = bookEntry("book-a")
+        val second = bookEntry("book-b")
+        val continueProgressLoad = CompletableDeferred<Unit>()
+        val repository = FakeBookshelfRepository(
+            entries = listOf(first),
+            progressById = mapOf("book-a" to 0.25),
+            syncResult = SyncResult.Imported("book-a", characterCount = 100),
+            progressLoadGate = continueProgressLoad,
+        )
+        val viewModel = BookshelfViewModel(repository, testScope())
+        viewModel.reloadBookEntries()
+
+        viewModel.syncBook(
+            entry = first,
+            direction = SyncDirection.ImportFromTtu,
+            syncStats = false,
+            statsSyncMode = StatisticsSyncMode.Merge,
+            syncAudioBook = false,
+        )
+        repository.entries = listOf(first, second)
+        repository.progressById = mapOf("book-a" to 0.75, "book-b" to 0.5)
+        viewModel.reloadBookEntries()
+
+        continueProgressLoad.complete(Unit)
+
+        assertEquals(
+            mapOf("book-a" to 0.75, "book-b" to 0.5),
+            viewModel.uiState.value.bookProgressById,
+        )
+    }
+
+    @Test
     fun errorFeedbackCanBeDismissedAfterFailure() {
         val viewModel = BookshelfViewModel(FakeBookshelfRepository(), testScope())
 
@@ -898,6 +993,9 @@ class BookshelfViewModelTest {
         val remoteDeleteGate: CompletableDeferred<Unit>? = null,
         val remoteImportProgress: List<Double> = emptyList(),
         val migrationProgressEvents: List<LegacyBookMigrationProgress> = emptyList(),
+        val syncGate: CompletableDeferred<Unit>? = null,
+        val syncResult: SyncResult? = null,
+        val progressLoadGate: CompletableDeferred<Unit>? = null,
         private val loadPlans: ArrayDeque<LoadPlan> = ArrayDeque(),
     ) : BookshelfRepository {
         data class LoadPlan(
@@ -906,6 +1004,7 @@ class BookshelfViewModelTest {
         )
 
         val loadRequests = mutableListOf<BookSortOption>()
+        val progressLoadRequests = mutableListOf<List<String>>()
         val remoteLoadRequests = mutableListOf<List<String>>()
         val deletedEntries = mutableListOf<BookEntry>()
         val movedBooks = mutableListOf<Pair<Set<String>, String?>>()
@@ -936,6 +1035,12 @@ class BookshelfViewModelTest {
                 shelves = shelves,
                 settings = settings,
             )
+        }
+
+        override suspend fun loadBookProgress(entries: List<BookEntry>): Map<String, Double> {
+            progressLoadRequests += entries.map { it.metadata.id }
+            progressLoadGate?.await()
+            return entries.associate { it.metadata.id to progressById.getValue(it.metadata.id) }
         }
 
         override suspend fun loadRemoteBooks(localEntries: List<BookEntry>): RemoteBookshelfLoadResult {
@@ -1033,7 +1138,10 @@ class BookshelfViewModelTest {
             syncStats: Boolean,
             statsSyncMode: StatisticsSyncMode,
             syncAudioBook: Boolean,
-        ): SyncResult = SyncResult.Synced(entry.metadata.title.orEmpty())
+        ): SyncResult {
+            syncGate?.await()
+            return syncResult ?: SyncResult.Synced(entry.metadata.title.orEmpty())
+        }
     }
 }
 
@@ -1048,6 +1156,7 @@ private fun UiText?.testString(): String? =
             R.string.bookshelf_import_failed_list_format -> "Failed to import:\n${args[0]}"
             R.string.bookshelf_scanning_folder -> "Scanning folder..."
             R.string.bookshelf_no_epub_files_found -> "No EPUB files found."
+            R.string.bookshelf_syncing -> "Syncing..."
             R.string.bookshelf_already_synced_format -> "${args[0]} is already synced"
             R.string.bookshelf_exported_epub_format -> "Exported ${args[0]}."
             R.string.bookshelf_remote_books_load_failed -> "Failed to fetch books from Google Drive."

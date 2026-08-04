@@ -101,6 +101,8 @@ internal fun SasayakiSheet(
     subtitleMatchData: SasayakiMatchData?,
     matchDependencies: SasayakiMatchDependencies?,
     chapters: List<SasayakiAudiobookChapter>,
+    selectedTab: SasayakiSheetTab,
+    onSelectedTabChange: (SasayakiSheetTab) -> Unit,
     onSubtitleMatchUpdated: (SasayakiMatchData) -> Unit,
     onSettingsChange: (SasayakiSettings) -> Unit,
     onDismiss: () -> Unit,
@@ -113,12 +115,6 @@ internal fun SasayakiSheet(
     var importError by remember { mutableStateOf<String?>(null) }
     var skipActionMenuExpanded by remember { mutableStateOf(false) }
     var colorDialogRow by remember { mutableStateOf<SasayakiColorRow?>(null) }
-    val defaultTab = sasayakiDefaultSheetTab(
-        hasAudio = player.hasAudio,
-        hasChapters = chapters.isNotEmpty(),
-    )
-    var selectedTab by remember { mutableStateOf(defaultTab) }
-    var userSelectedTab by remember { mutableStateOf(false) }
     val currentChapter = SasayakiAudiobookChapters.currentChapterAt(chapters, player.currentTime)
     val importFailedMessage = stringResource(R.string.sasayaki_import_audiobook_failed)
     val importer = rememberLauncherForActivityResult(OpenDocumentContent()) { uri ->
@@ -152,12 +148,6 @@ internal fun SasayakiSheet(
         }
     }
 
-    LaunchedEffect(defaultTab) {
-        if (!userSelectedTab) {
-            selectedTab = defaultTab
-        }
-    }
-
     ReaderBottomPanel(
         sheetStyle = sheetStyle,
         onDismiss = {
@@ -185,10 +175,7 @@ internal fun SasayakiSheet(
                 }
                 SasayakiSheetTabs(
                     selectedTab = selectedTab,
-                    onSelectedTabChange = { tab ->
-                        userSelectedTab = true
-                        selectedTab = tab
-                    },
+                    onSelectedTabChange = onSelectedTabChange,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
                 )
                 when (selectedTab) {
