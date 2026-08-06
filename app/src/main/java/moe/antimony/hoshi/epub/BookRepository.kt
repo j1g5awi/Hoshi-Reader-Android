@@ -48,7 +48,12 @@ class BookRepository private constructor(
     constructor(filesDir: File) : this(filesDir, Dispatchers.IO)
 
     private val archiveExtractor = EpubArchiveExtractor()
-    private val importDataSource = BookImportDataSource(filesDir, fileDataSource, ioDispatcher = ioDispatcher)
+    private val importDataSource = BookImportDataSource(
+        filesDir,
+        fileDataSource,
+        ioDispatcher = ioDispatcher,
+        findDeletedBookRoot = ::findDeletedBookRoot,
+    )
 
     private val legacyPackedMigrationMutex = Mutex()
 
@@ -67,7 +72,8 @@ class BookRepository private constructor(
         }
         var legacyMigrationCurrent = 0
         val entries = roots
-            .map { (root, metadata) ->
+            .mapNotNull { (root, metadata) ->
+                if (metadata?.deleted == true) return@mapNotNull null
                 if (shouldMigrateLegacyExtractedBookToPackedEpub(root, metadata)) {
                     legacyMigrationCurrent += 1
                     onLegacyBookMigrationProgress(
@@ -144,63 +150,20 @@ class BookRepository private constructor(
         bookRoot: File,
         releasePersistedSasayakiAudioUri: (String) -> Unit = {},
     ) {
-        val removedId = loadMetadata(bookRoot)?.id ?: bookRoot.name
+        val metadata = loadMetadata(bookRoot) ?: return
+        val removedId = metadata.id
         loadSasayakiPlayback(bookRoot)?.audioUri?.let { uri ->
             runCatching { releasePersistedSasayakiAudioUri(uri) }
         }
-        runCatching { saveOrphanedStatistics(bookRoot, removedId) }
-        fileDataSource.deleteBook(bookRoot)
+        fileDataSource.deleteBookContent(bookRoot, metadata)
+        saveMetadata(bookRoot, metadata.copy(deleted = true))
         val cleanedShelves = loadShelves().map { shelf ->
             shelf.copy(bookIds = shelf.bookIds.filterNot { it == removedId })
         }
         saveShelves(cleanedShelves)
     }
 
-    private suspend fun saveOrphanedStatistics(bookRoot: File, bookId: String) {
-        val statistics = sidecarDataSource.loadStatistics(bookRoot) ?: return
-        if (statistics.isEmpty()) return
-        val metadata = loadMetadata(bookRoot)
-        val title = metadata?.displayTitle?.ifBlank { null } ?: bookRoot.name
-        val orphaned = OrphanedBookStatistics(bookId = bookId, title = title, statistics = statistics)
-        val orphanedFile = filesDir.resolve(ORPHANED_STATISTICS_FILE_NAME)
-        val existing = withContext(ioDispatcher) {
-            if (orphanedFile.isFile) {
-                runCatching {
-                    sidecarDataSource.json.decodeFromString(
-                        ListSerializer(OrphanedBookStatistics.serializer()),
-                        orphanedFile.readText(),
-                    ).toMutableList()
-                }.getOrElse { mutableListOf() }
-            } else {
-                mutableListOf()
-            }
-        }
-        val index = existing.indexOfFirst { it.bookId == bookId }
-        if (index >= 0) {
-            existing[index] = orphaned
-        } else {
-            existing.add(orphaned)
-        }
-        withContext(ioDispatcher) {
-            orphanedFile.writeText(
-                sidecarDataSource.json.encodeToString(
-                    ListSerializer(OrphanedBookStatistics.serializer()),
-                    existing,
-                ),
-            )
-        }
-    }
 
-    suspend fun loadOrphanedStatistics(): List<OrphanedBookStatistics> = withContext(ioDispatcher) {
-        val orphanedFile = filesDir.resolve(ORPHANED_STATISTICS_FILE_NAME)
-        if (!orphanedFile.isFile) return@withContext emptyList()
-        runCatching {
-            sidecarDataSource.json.decodeFromString(
-                ListSerializer(OrphanedBookStatistics.serializer()),
-                orphanedFile.readText(),
-            )
-        }.getOrElse { emptyList() }
-    }
 
     suspend fun loadShelves(): List<BookShelf> =
         sidecarDataSource.loadShelves(fileDataSource.booksDirectory).orEmpty()
@@ -271,8 +234,31 @@ class BookRepository private constructor(
 
     override fun currentAppleReferenceDateSeconds(): Double = clock.currentAppleReferenceDateSeconds()
 
-    suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File =
-        importDataSource.importBook(contentResolver, uri)
+    suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File {
+        val root = importDataSource.importBook(contentResolver, uri)
+        runCatching {
+            val metadata = loadMetadata(root)
+            if (metadata?.deleted == true) {
+                saveMetadata(root, metadata.copy(
+                    deleted = false,
+                    lastAccess = clock.currentAppleReferenceDateSeconds(),
+                ))
+            }
+        }
+        return root
+    }
+
+    private suspend fun findDeletedBookRoot(safeTitle: String): File? {
+        val deletedSuffix = "_deleted"
+        return fileDataSource.loadAllBooks().firstOrNull { root ->
+            val metadata = loadMetadata(root)
+            metadata?.deleted == true && (
+                root.name == safeTitle ||
+                root.name.removeSuffix(deletedSuffix) == safeTitle ||
+                metadata.folder == safeTitle
+            )
+        }
+    }
 
     private suspend fun File.fallbackMetadata(): BookMetadata = withContext(ioDispatcher) {
         BookMetadata(
@@ -530,6 +516,16 @@ class BookFileDataSource(
             root.deleteRecursively()
         }
     }
+
+    suspend fun deleteBookContent(bookRoot: File, metadata: BookMetadata) = withContext(ioDispatcher) {
+        val root = bookRoot.canonicalFile
+        val booksRoot = booksDirectory.canonicalFile
+        require(root.path != booksRoot.path && root.path.startsWith(booksRoot.path + File.separator)) {
+            "Unsafe book directory: ${bookRoot.path}"
+        }
+        metadata.epub?.let { root.resolve(it).delete() }
+        root.resolve("Sasayaki").deleteRecursively()
+    }
 }
 
 class BookImportDataSource(
@@ -538,6 +534,7 @@ class BookImportDataSource(
     private val parser: EpubBookParser = EpubBookParser(),
     private val archiveExtractor: EpubArchiveExtractor = EpubArchiveExtractor(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val findDeletedBookRoot: (suspend (String) -> File?)? = null,
 ) {
     suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File = withContext(ioDispatcher) {
         val displayName = contentResolver.validateImportFile(uri, ImportFileType.Epub)
@@ -561,19 +558,16 @@ class BookImportDataSource(
         val parsedBook = runCatching { parser.parse(extractedRoot, fallbackTitle = fallbackTitle) }
             .onFailure { importRoot.deleteRecursively() }
             .getOrThrow()
-        val targetRoot = fileDataSource.createBookDirectoryForImportedTitle(parsedBook.title)
-        if (targetRoot.listFiles()?.isNotEmpty() == true) {
-            importRoot.deleteRecursively()
+        val safeTitle = parsedBook.title.sanitizeImportedBookTitle()
+        val targetRoot = findDeletedBookRoot?.invoke(safeTitle) ?: fileDataSource.createBookDirectory(safeTitle)
+        try {
+            targetRoot.mkdirs()
+            if (!targetRoot.isDirectory) error("Unable to create book directory")
+            val packedEpub = targetRoot.resolve("${targetRoot.name}.epub")
+            archiveFile.copyTo(packedEpub, overwrite = true)
             targetRoot
-        } else {
-            try {
-                targetRoot.mkdirs()
-                val packedEpub = targetRoot.resolve("${targetRoot.name}.epub")
-                archiveFile.copyTo(packedEpub, overwrite = true)
-                targetRoot
-            } finally {
-                importRoot.deleteRecursively()
-            }
+        } finally {
+            importRoot.deleteRecursively()
         }
     }
 }
@@ -749,7 +743,6 @@ private const val SASAYAKI_MATCH_FILE_NAME = "sasayaki_match.json"
 private const val SASAYAKI_PLAYBACK_FILE_NAME = "sasayaki_playback.json"
 private const val SASAYAKI_DIRECTORY_NAME = "Sasayaki"
 private const val APPLE_REFERENCE_EPOCH_SECONDS = 978_307_200.0
-private const val ORPHANED_STATISTICS_FILE_NAME = "orphaned_statistics.json"
 
 private val bookSidecarFileNames = setOf(
     METADATA_FILE_NAME,
