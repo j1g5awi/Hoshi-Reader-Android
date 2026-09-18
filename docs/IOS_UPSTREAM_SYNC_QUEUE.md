@@ -3,368 +3,56 @@
 This document tracks open Android work after checking iOS upstream `develop`.
 
 - Source: `reference/Hoshi-Reader-iOS`
-- Baseline for this refresh: `24e356f00cfc3b74675d5610d2ffeeb52516301c`
-- Latest checked: `origin/develop` at `c31c9d0ce376ff83bf6a91d908bf9f8e0fb4947b`
-- Checked on: 2026-08-01
-- Upstream history note: `develop` was force-updated. The previous tip
-  `24e356f00cfc3b74675d5610d2ffeeb52516301c` is no longer an ancestor of the
-  current tip; its project-only commit has no Android action. All commits newly
-  reachable from the current `develop` tip were audited against Android code.
+- Baseline for this refresh: `c31c9d0ce376ff83bf6a91d908bf9f8e0fb4947b`
+- Latest checked: `origin/develop` at `42e7b81d441c164c3a446152f4bf2356135d1e82`
+- Checked on: 2026-09-16
+- This refresh advances the reference by 43 reachable commits. The baseline is
+  an ancestor of the new tip; new behavior and earlier open work were checked
+  against current Android code. The older force-update is historical context
+  only (`24e356f` remains classified below).
 
 ## Current Queue
 
-### 1. Dictionary categories, Kanji dictionaries, and complete pitch data
+Only open work is listed below. After removing completed slices, renumber the
+remaining slices consecutively from 1 and update all slice references.
+
+### 1. Reader renderer termination recovery
 
 Status: pending Android sync.
 
-Commits:
-
-- `9eff7dd` - add an excluded dictionary category.
-- `67fc9e8` - add basic Kanji dictionary import, lookup, and popup rendering.
-- `3cd8294` - support string pitch patterns plus nasal and devoice indicators.
+Commits: `7d7321f`.
 
 Dependency/value reasoning:
 
-- This is the native bridge and stored-dictionary foundation for later Anki
-  template work. Land the bridge/data model before UI and template consumers.
+- Independent route/runtime reliability improvement with high value when the
+  OS terminates a background renderer. Use the closeable fallback in slice 2
+  if recovery cannot complete.
 
 iOS behavior to mirror:
 
-- Term dictionaries can be categorized as monolingual, bilingual, excluded, or
-  uncategorized. Excluded dictionaries stay installed but do not participate in
-  term lookup.
-- Yomitan Kanji dictionaries are imported, configured, queried for a selected
-  character, and rendered as Kanji readings and meanings in the popup.
-- Pitch entries accept numeric downsteps or explicit high/low strings and render
-  nasal and devoiced mora indicators without losing dictionary attribution.
+- Retain the latest progress, re-enter loading/restore, reload the chapter,
+  restore cues/highlights, and resume Sasayaki transition handling after restore.
 
 Android current gap:
 
-- `DictionaryType` and `DictionaryConfig` in
-  `app/src/main/java/moe/antimony/hoshi/dictionary/DictionaryModels.kt` expose
-  only Term, Frequency, and Pitch and have no dictionary category or Kanji list.
-- `DictionaryNativeBridge` and `DictionaryLookupQueryService` in
-  `app/src/main/java/moe/antimony/hoshi/dictionary/` pass only term/frequency/
-  pitch paths and expose no Kanji query API. The current query service already
-  serializes rebuilds and atomically swaps sessions, so `47b0bba` is covered;
-  the remaining gap is bridge capability and its consumers.
-- `app/src/main/java/de/manhhao/hoshi/HoshiDicts.kt` and the tracked
-  `third_party/hoshidicts-kotlin-bridge` model pitch positions as `IntArray` and
-  expose neither nasal/devoice metadata nor Kanji results.
-- `LookupPopupHtml.kt` and `app/src/main/assets/hoshi-web/popup/popup.js` consume
-  only `pitchPositions`; `DictionaryView.kt` has no category or Kanji sections.
+- `ReaderChapterWebView.kt.EpubWebViewClient.onRenderProcessGone()`
+  only calls `view.destroy()` and returns true. It does not notify the state
+  holder, remove/recreate the view or replay chapter/progress/settings/cues and
+  highlights. `ReaderWebView.kt` has no renderer-recovery generation.
 
 Suggested slice:
 
-- Update the tracked Kotlin/JNI bridge and ABI tests first, then extend import
-  summaries, storage/config/profile backup compatibility, and query sessions.
-- Add category and Kanji management UI through the existing dictionary
-  repository/ViewModel boundary.
-- Extend popup JSON and JS/CSS for Kanji entries and the final pitch schema.
+- Add a typed termination event and recreate the WebView through its existing
+  host/state lifecycle, restoring from the latest accepted state. Confirm the
+  replacement lifecycle against Android WebView official guidance during
+  implementation.
 
 Validation:
 
-- Import term, frequency, pitch, and Kanji Yomitan archives; toggle, reorder,
-  delete, back up, and restore each type.
-- Confirm excluded dictionaries disappear from lookup without being deleted and
-  category-aware config survives profile switching and iOS-compatible backup.
-- Validate numeric/string pitch patterns, nasal/devoice markers, duplicate pitch
-  suppression, Kanji lookup, dark/e-ink themes, and dictionary media.
+- Background renderer exit/crash, latest position, loading frame, popup/native
+  selection cleanup, highlight/Sasayaki restore, repeated termination and Close.
 
-### 2. Multiple Anki card formats and advanced handlebars
-
-Status: pending Android sync; depends on dictionary categories and final popup
-payloads from queue item 1.
-
-Commits:
-
-- `119fb5b` - advanced Anki settings and monolingual/bilingual definitions.
-- `bd85c9b` - multiple named card formats.
-- `c943171`, `395218a` - show-notes action and its Anki-owned setting.
-- `8464a2c` - cloze prefix/body/suffix handlebars and precise sentence cloze.
-- `f1bc74b` - pitch-accent graph handlebars.
-- `2c86ed6` - brief/no-dictionary monolingual and bilingual variants.
-- `47683d9` - guard against deleted card formats.
-- `2702e31` - disable mining when the first field is not configured and handle a
-  disconnected AnkiConnect backend.
-
-Dependency/value reasoning:
-
-- Mining configuration and output are a single user workflow. Implementing the
-  storage model, popup format selection, and renderer together avoids formats
-  that can be selected but cannot produce valid notes.
-
-iOS behavior to mirror:
-
-- Users can keep up to six named/icon card formats, each with its own deck, note
-  type, field mappings, and tags; legacy single-format config migrates to a
-  default format.
-- Popup mining exposes every valid format, tolerates deleted formats, disables
-  mining if a format's first note field is unmapped, and can open existing notes
-  unless the action is disabled.
-- Advanced mappings include configurable selected-glossary fallback,
-  monolingual/bilingual definitions and their variants, cloze parts, and pitch
-  graph handlebars.
-
-Android current gap:
-
-- `AnkiSettings` in `AnkiModels.kt` stores one deck, note type, mapping map, and
-  tag string. `AnkiView.kt` edits that single format and has no format list,
-  selected-glossary fallback, advanced handlebar visibility, or show-notes
-  preference.
-- `AnkiHandlebarRenderer` lacks monolingual/bilingual, cloze-part, and pitch
-  graph handlebars. The popup payload has no category-aware glossary data or
-  pitch graph HTML.
-- `AnkiUiState.isConfigured` in `AnkiViewModel.kt` checks only selected deck and
-  note type, not whether the first note field is mapped.
-- `app/src/main/assets/hoshi-web/popup/popup.js` has one mine button per entry and
-  no format identifier or show-notes bridge. `AnkiRepository.mineEntry()` mines
-  only the single stored configuration.
-
-Suggested slice:
-
-- Add a versioned, backward-compatible format list to the DataStore-backed Anki
-  repository and migrate the current fields into one default format.
-- Add format management and advanced mapping UI with localized strings, then
-  pass format IDs through popup mining and duplicate/show-note actions.
-- Extend payload generation and renderer tests for every new handlebar and
-  selected-glossary fallback rule.
-
-Validation:
-
-- Migrate existing single-format settings, add/edit/delete/reorder formats, and
-  restart the app with all formats intact.
-- Mine through AnkiConnect and AnkiDroid using different formats, unmapped first
-  fields, deleted formats, disconnected backends, duplicates, media, cloze
-  offsets, category fallbacks, and pitch graphs.
-
-### 3. Reader furigana reveal mode
-
-Status: pending Android sync.
-
-Commits:
-
-- `15d4a6e` - add Off, Toggle, and Hidden furigana modes.
-- `23e0764` - migrate the legacy hide-furigana preference.
-
-Dependency/value reasoning:
-
-- This is a self-contained reader setting, but it touches shared selection and
-  all reader modes, so its state and tap semantics should land together.
-
-iOS behavior to mirror:
-
-- Off shows furigana normally. Hidden removes it. Toggle initially hides ruby
-  annotations with a dotted base-text indicator and reveals one ruby annotation
-  when tapped without opening lookup for that tap.
-- Existing hide-furigana users migrate to the equivalent final mode.
-
-Android current gap:
-
-- `ReaderSettings` stores only `hideFurigana: Boolean`; `ReaderAppearanceView.kt`
-  exposes a switch rather than a three-state mode.
-- `ReaderContentStyles.kt` removes/hides ruby globally and shared
-  `selection.js` has no `ruby.furigana-hidden` reveal tap result. Paginated,
-  continuous, and VN therefore cannot reveal individual annotations.
-
-Suggested slice:
-
-- Replace the boolean with a compatible enum migration, add the segmented
-  setting, and implement the same reveal marker and tap interception through the
-  shared reader selection/text semantics used by all modes.
-
-Validation:
-
-- Verify Off/Toggle/Hidden in paginated, continuous, and VN modes, horizontal
-  and vertical writing, with lookup, highlights, Sasayaki, restore, and ruby
-  split across styled nodes.
-
-### 4. Reader paginated paragraph splitting and explicit font readiness
-
-Status: pending Android sync.
-
-Commits:
-
-- `eb86431` - split paragraphs that span pages so native selection remains
-  visible.
-- `ff86caa` - explicitly load the selected reader font before layout/restore.
-- `c31c9d0` - handle ruby, empty elements, and boundary edge cases in paragraph
-  splitting.
-
-Dependency/value reasoning:
-
-- Both changes stabilize the geometry used by pagination, native selection,
-  progress, and restore. Font readiness must be established before fragment
-  boundaries are calculated.
-
-iOS behavior to mirror:
-
-- Paginated paragraphs spanning multiple columns are split into layout-neutral
-  fragments at measured page boundaries, preserving ruby and empty/replaced
-  elements and keeping justified fragments visually correct.
-- The selected custom font is explicitly requested and awaited before splitting,
-  node-offset construction, initial restore, or fragment jumps.
-
-Android current gap:
-
-- `app/src/main/assets/hoshi-web/reader/reader-paginated.js` has native-selection
-  scroll locking but no `splitPoints`/paragraph fragmentation equivalent, so a
-  selection spanning a CSS-column boundary can still be created outside the
-  visible column.
-- Paginated and continuous scripts await `document.fonts.ready`, but do not call
-  `document.fonts.load()` for the computed body family. Imported fonts are
-  injected by `ReaderContentStyles.kt`, so passive readiness may not force the
-  selected face to load before restore measurements.
-
-Suggested slice:
-
-- Add a shared font-await helper and a paginated-only fragmenter after a focused
-  Android WebView geometry design. Keep offsets compatible with
-  `reader-dom-text.js`, highlights, and Sasayaki rather than copying Swift glue.
-
-Validation:
-
-- Long-press native selection across page boundaries in horizontal/vertical
-  writing with ruby, inline elements, empty spans, images, justified text, and
-  custom fonts.
-- Verify page count, progress, lookup offsets, highlights, font switching,
-  chapter jumps, and bookmark restore before and after fragmentation.
-
-### 5. Sasayaki import, media controls, and MP3 mining clips
-
-Status: pending Android sync.
-
-Commits:
-
-- `947898c` - export mined Sasayaki sentence audio as MP3.
-- `4a5cfde` - honor the command-center skip-control preference.
-- `a9a0747` - accept MP4 audiobooks and TXT subtitle files.
-
-Dependency/value reasoning:
-
-- These changes share import validation, Media3 playback, notification/session
-  commands, and Anki media export.
-
-iOS behavior to mirror:
-
-- Sasayaki accepts `.srt` or `.txt` subtitle files and `.mp3`, `.m4b`, or `.mp4`
-  audiobooks.
-- When skip controls are enabled, external previous/next commands seek by the
-  configured skip interval; otherwise they move by cue.
-- Mined sentence clips are broadly compatible MP3 files with MP3 filenames.
-
-Android current gap:
-
-- `ImportFileType.SasayakiSubtitle` accepts only `srt`, while
-  `SasayakiAudiobook` and `SasayakiAudioRepository` accept only `mp3`/`m4b`.
-- `SasayakiPlaybackServiceRuntime.previousFromSession()`/`nextFromSession()`
-  always move by cue; `readerSkipButtonAction` affects Reader buttons but not the
-  MediaSession command path.
-- `SasayakiCueAudioExporter` transcodes to AAC/ADTS and names output `.aac`, not
-  MP3. Current content-hashed Anki filenames are otherwise already correct.
-
-Suggested slice:
-
-- Expand SAF type validation and storage extension handling, then update
-  MediaSession command routing.
-- Choose an Android-supported MP3 encoding path only after checking current
-  Media3/Android media guidance; preserve failure handling and background
-  playback ownership in the existing MediaSessionService.
-
-Validation:
-
-- Import and play every accepted subtitle/audio extension through SAF; reject
-  unsupported content without losing the previous source.
-- Exercise cue/seconds skip modes from Reader, headset, notification, and system
-  controls.
-- Mine clips through AnkiDroid and AnkiConnect and verify valid MP3 playback,
-  MIME type, hashed filenames, and sentence range expansion.
-
-### 6. Bookshelf cover privacy and fallback artwork
-
-Status: pending Android sync.
-
-Commits:
-
-- `c6b29c8` - show title/author fallback artwork when no cover exists.
-- `1db2cd3` - add Show, Blur, and Hide cover modes.
-
-Dependency/value reasoning:
-
-- The fallback and privacy modes affect every local/remote/shelf preview cover
-  and should reuse the existing shared Coil/thumbnail-store boundary.
-
-iOS behavior to mirror:
-
-- A deterministic gradient card with title and optional author replaces the gray
-  placeholder when a book has no real cover.
-- Bookshelf and shelf-management surfaces can show, blur, or hide covers.
-
-Android current gap:
-
-- `BookshelfSettings` stores only sort and Reading Shelf visibility; there is no
-  cover mode.
-- `BookCoverCard()` in `BookshelfView.kt` renders a gray box for missing covers
-  and has no title/author input. `BookMetadata` does not store author, and
-  `EpubBook` does not expose parsed author metadata.
-
-Suggested slice:
-
-- Add optional author metadata compatibly during import/parse, then add a
-  deterministic Compose fallback and cover-mode setting applied to all cover
-  consumers.
-
-Validation:
-
-- Missing-cover books with/without authors, legacy metadata, local/remote books,
-  collapsed shelf previews, multi-select, Show/Blur/Hide, dark/e-ink themes.
-
-### 7. Lookup popup two-column layout and visual sizing
-
-Status: pending Android sync.
-
-Commits:
-
-- `ed25036` - masonry layout and popup visual redesign.
-- `8d1442e` - add Yomitan danger/success theme variables.
-
-Dependency/value reasoning:
-
-- This is a shared popup asset/settings slice used by Reader, Dictionary tab,
-  and Process Text. Land persistence and bootstrap values before JS/CSS layout.
-
-iOS behavior to mirror:
-
-- Dictionary settings add a Two-Column Layout toggle. Multi-dictionary glossary
-  cards use masonry/two-column layout when enabled and keep one column otherwise.
-- Popup cards, padding, theme accents, and definition image canvas sizing match
-  the refreshed design; popup height can reach 800.
-
-Android current gap:
-
-- `DictionarySettings`/repository and `DictionaryView.kt` have no
-  `twoColumnLayout` setting.
-- `LookupPopupHtml.kt` injects compact glossary and pitch options but no two-
-  column flag. `popup.js` has no masonry/ResizeObserver path, uses
-  `maxCanvasSize = 128`, and `popup.css` lacks the refreshed cards and danger/
-  success variables.
-- `ReaderAppearanceView.kt` still constrains popup height to 500.
-
-Suggested slice:
-
-- Add profile-aware setting persistence and bootstrap injection, port the final
-  asset behavior while preserving Android bridge calls, and raise the height
-  range with focused tests.
-
-Validation:
-
-- Reader, Dictionary tab, recursive lookup, and Process Text with one/multiple
-  dictionaries, collapsed sections, long glossaries, images, mining/audio
-  buttons, dark/e-ink themes, reduced motion, and outside dismissal.
-- Run `node --test app/src/test/js/*.test.mjs`, focused settings tests,
-  localization tests, and lint.
-
-### 8. Reader route open-failure fallback
+### 2. Reader route open-failure fallback
 
 Status: pending Android sync.
 
@@ -398,7 +86,178 @@ Validation:
 - Missing/corrupt book, working Close, normal Reader open/close, Android Back,
   bookshelf state preservation, and bookmark refresh.
 
-### 9. Google Drive timeout and automatic-refresh error suppression
+### 3. Reader highlight ruby text and exact-range editing
+
+Status: pending Android sync.
+
+Commits: `00f95c4`, `21971bb`.
+
+Dependency/value reasoning:
+
+- Uses the completed shared text/offset normalization; adds useful highlight
+  editing without replacing Android's existing native selection menu.
+
+iOS behavior to mirror:
+
+- Persist optional `textFurigana` as base text plus parenthesized readings and
+  show it in Contents. Selecting an identical raw range recolors its existing
+  highlight; choosing its current color removes it.
+
+Android current gap:
+
+- `ReaderHighlight.kt`, `ReaderHighlightCreationResult`, `highlights.js`, and
+  `ReaderHighlightSheet.kt` carry/display only plain `text`.
+  `hoshiHighlights.createHighlight()` always wraps a new ID; it has no range
+  identity metadata or recolor/remove result. VN's highlight creation adapter
+  in `reader-visual-novel.js` also needs the same source-range behavior.
+
+Suggested slice:
+
+- Extend compatible sidecars and creation/update results, share exact-range
+  matching, and update the Kotlin persistence/Contents flow.
+
+Validation:
+
+- Legacy sidecars, ruby across styled nodes, repeated selection with same/new
+  color, restart/sync, all reader modes, and raw versus normalized offsets.
+
+### 4. Book search literal matching and landing highlight
+
+Status: partial Android implementation; remaining parity work.
+
+Commits: `b7f09ca` (search behavior only).
+
+Dependency/value reasoning:
+
+- Build on the completed shared normalization and existing Contents search;
+  reuse highlight range projection after slice 3 without storing transient
+  search marks.
+
+iOS behavior to mirror:
+
+- Search plain visible text case-insensitively, preserving punctuation/spaces
+  and paragraph boundaries, with sentence/bracket-aware snippets and a 100-hit
+  limit. Jumping restores the result position and shows a transient blue match
+  highlight; page navigation clears it.
+
+Android current gap:
+
+- `ReaderSearchEngine.search()` normalizes both query and document, dropping
+  punctuation/space, uses fixed 24/48-character snippets and a 1000-hit limit.
+  `ReaderSearchDocumentBuilder` does not preserve paragraph boundaries.
+- `ReaderWebView.kt.onSearchResultJump` only navigates; `ReaderSearchResult`
+  lacks a normalized match length and `highlights.js` has no transient search
+  highlight command. The search entry/results/history already exist.
+
+Suggested slice:
+
+- Keep literal display-text matching with an explicit normalized position map,
+  return match length, and apply/clear a temporary projected highlight after
+  restore in each mode.
+
+Validation:
+
+- Queries containing spaces/punctuation, paragraph boundaries, case, ruby,
+  bracketed complete sentences, 100-hit limit, jump/back/forward, page-turn
+  clearing and supplementary-character offsets in all reader modes.
+
+### 5. Lookup popup two-column layout and dictionary CSS isolation
+
+Status: pending Android sync.
+
+Commits:
+
+- `ed25036` - masonry layout and popup visual redesign.
+- `8d1442e` - add Yomitan danger/success theme variables.
+- `0a91398` - scope dictionary CSS to div wrappers.
+
+Dependency/value reasoning:
+
+- This is a shared popup asset/settings slice used by Reader, Dictionary tab,
+  and Process Text. Land persistence and bootstrap values before JS/CSS layout.
+
+iOS behavior to mirror:
+
+- Dictionary settings add a Two-Column Layout toggle. Multi-dictionary glossary
+  cards use masonry/two-column layout when enabled and keep one column otherwise.
+- Popup cards, padding, theme accents, and definition image canvas sizing match
+  the refreshed design. Dictionary styles target `:where(div)[data-dictionary]`
+  so labels carrying the same dictionary name do not inherit glossary styles.
+
+Android current gap:
+
+- `DictionarySettings`/repository and `DictionaryView.kt` have no
+  `twoColumnLayout` setting.
+- `LookupPopupHtml.kt` injects compact glossary and pitch options but no two-
+  column flag. `popup.js` has no masonry/ResizeObserver path, uses
+  `maxCanvasSize = 128`, and `popup.css` lacks the refreshed cards and danger/
+  success variables.
+- The glossary selector in `popup.js` still targets every `[data-dictionary]`
+  element. Height is already configurable to 1000 in `ReaderAppearanceView.kt`;
+  the upstream height increase requires no remaining Android work.
+
+Suggested slice:
+
+- Add profile-aware setting persistence and bootstrap injection, port the final
+  asset behavior and div-scoped dictionary styles while preserving Android
+  bridge calls, with focused behavior tests.
+
+Validation:
+
+- Reader, Dictionary tab, recursive lookup, and Process Text with one/multiple
+  dictionaries, collapsed sections, long glossaries, images, mining/audio
+  buttons, dark/e-ink themes, reduced motion, and outside dismissal.
+- Run `node --test app/src/test/js/*.test.mjs`, focused settings tests,
+  localization tests, and lint.
+
+### 6. Frequency sorting controls and import/update feedback
+
+Status: partial native support; pending Android UI/bridge integration.
+
+Commits: `165992a`, `e849e36` (Auto naming), `222a72b`,
+`7dd3f49` (automatic low-RAM policy only).
+
+Dependency/value reasoning:
+
+- Native frequency options already exist in vendored hoshidicts; extend the
+  parent/JNI ABI consistently before settings/query callers. Import diagnostics
+  similarly need a typed result before UI can report useful per-file reasons.
+
+iOS behavior to mirror:
+
+- Auto/Ascending/Descending/Disabled frequency sorting, optional enabled
+  frequency dictionary for explicit order, initial valid dictionary selection
+  and preservation across dictionary title updates.
+- Batch import continues after individual failures and reports filename plus
+  reason. Automatic dictionary updates always use low-RAM import.
+
+Android current gap:
+
+- `DictionarySettings` has no sort order/dictionary fields;
+  `HoshiDicts.lookup`, `DictionaryNativeBridge` and
+  `DictionaryLookupQueryService.lookup()` accept no frequency options, although
+  the vendored C++ `LookupOptions`/C API support them.
+- `ImportResult` omits native error text; `DictionaryImportDataSource` replaces
+  failure with a generic message. `DictionaryViewModel` retains failed items'
+  names but drops individual reasons. Per-import staging/continuation exists.
+- `DictionaryAutoUpdateRunner` uses `DictionaryUpdateService`, whose
+  `lowRamImport = settings.lowRamDictionaryImport` defaults false even for
+  `DictionaryMutationOperation.AutoUpdate`.
+
+Suggested slice:
+
+- Expose typed native options/results, persist sort settings and update renamed
+  references, retain per-file localized failure context, force low-RAM only for
+  automatic updates. Keep Android's serialized atomic query-session replacement;
+  iOS `releaseQuery()` is an implementation choice, not an extra product gap.
+
+Validation:
+
+- All sorting modes, missing/disabled/reordered/renamed dictionaries, profiles,
+  equal/missing frequencies; mixed valid/invalid batch imports and recovery;
+  automatic low-RAM with the manual setting off and unchanged manual behavior.
+
+### 7. Google Drive timeout and automatic-refresh error suppression
 
 Status: pending Android sync.
 
@@ -436,6 +295,78 @@ Validation:
 - Automatic refresh offline, slow token/list requests, and connection loss;
   manual connect/refresh/import/export/delete must still show actionable errors.
 
+### 8. Remote bookshelf last-access ordering
+
+Status: pending Android sync.
+
+Commits: `e6e2b4b`.
+
+Dependency/value reasoning:
+
+- Independent of timeout slice 7; reuse the existing TTU filename timestamp
+  parsers and grouped Drive file discovery.
+
+iOS behavior to mirror:
+
+- Remote last access is the newest progress/audiobook timestamp, falling back
+  to bookdata last access when neither exists; Recent sort reflects it.
+
+Android current gap:
+
+- `RemoteBookEntry` has no last-access field. `BookshelfRepository.kt`
+  `loadRemoteBooksOnce()` builds remote entries and sorts by title regardless of
+  recent progress/audio filenames. `DriveSyncFiles` has no last-access projection.
+  `GoogleDriveClient.toDriveSyncFiles()` already selects latest files by type.
+
+Suggested slice:
+
+- Add the timestamp projection and apply selected bookshelf sorting to remote
+  entries without changing local metadata or downloading full books.
+
+Validation:
+
+- Progress versus audio newest timestamp, bookdata fallback, missing/malformed
+  names, multiple remote books, Recent/Title switch and refresh/import.
+
+### 9. Reader navigation and options toolbar
+
+Status: partial Android implementation; remaining visual/interaction parity.
+
+Commits: `42e7b81`.
+
+Dependency/value reasoning:
+
+- Builds on existing Compose chrome/settings and always-available statistics;
+  UIKit itself is not an Android implementation target.
+
+iOS behavior to mirror:
+
+- A top navigation title/subtitle and bottom Close, centered information and
+  Options menu replace individual sheet buttons. Options contains Appearance,
+  Contents, Statistics and eligible Sasayaki. Focus hides both bars while
+  configured tracking/playback/history controls remain in the top safe strip.
+  Continuous content reserves navigation/toolbar insets without covering text.
+
+Android current gap:
+
+- `ReaderWebViewChrome.kt.ReaderBottomChrome` still exposes separate Appearance,
+  Contents, Statistics and Sasayaki buttons rather than the Options menu and
+  centered toolbar information. The current title/progress bubble layout also
+  differs from the navigation title/subtitle in `ReaderViewController.swift`.
+- `ReaderChrome.kt` already owns focus visibility and content insets; keep those
+  boundaries and adapt their final dimensions/state for the new arrangement.
+
+Suggested slice:
+
+- Mirror the final actions and information placement with Compose/Material 3,
+  reuse close/focus/menu state and verify continuous-mode inset handling.
+
+Validation:
+
+- Title/progress/statistics combinations, Close and Android Back, menu sheet
+  routing, Sasayaki eligibility, focus toggles/history, horizontal/vertical
+  continuous and paginated/VN content, custom/dark/e-ink themes and rotation.
+
 ### 10. Reader WebView line-box CSS parity
 
 Status: pending Android sync.
@@ -461,53 +392,135 @@ Android current gap:
 
 Suggested slice:
 
-- Remove it only after Android WebView comparison, then update tests to assert
-  the final CSS behavior.
+- Compare Android WebView layout, remove the retained declaration, and replace
+  the source-string preservation assertion with meaningful layout coverage.
 
 Validation:
 
 - Paginated/continuous horizontal and vertical writing, ruby, cover and
   multi-image pages, line height, progress, and restore.
 
+### 11. App accent and stroke-order font attribution
+
+Status: pending Android sync.
+
+Commits: `bd21e24`, `8024df1` (font attribution only).
+
+Dependency/value reasoning:
+
+- Independent small UI slices; accent must preserve Android dark/e-ink contrast.
+  Attribute the font Android already offers, without adding unused SwiftLAME.
+
+iOS behavior to mirror:
+
+- Use the new blue accent (Display-P3 components 0.523/0.668/0.904) and expose
+  Kanji Stroke Order Font source/BSD-3 attribution in About.
+
+Android current gap:
+
+- `Theme.kt`/`Color.kt` still use default purple Material accent colors.
+  `AboutView.kt` has no stroke-order font source/license entry, although
+  `KanjiStrokeOrderFontInstaller` offers that font for download.
+
+Suggested slice:
+
+- Choose a color-managed equivalent in the Android palette and add localized
+  source/license UI using the existing About surface.
+
+Validation:
+
+- Ordinary app controls in light/dark/custom and pure e-ink themes; About links
+  and font license text in English/Chinese.
+
 ## Open Commit Inventory
 
 | Commit | Date | iOS summary | Android status |
 | --- | --- | --- | --- |
-| `9eff7dd` | 2026-06-20 | Add excluded dictionary category | Pending dictionary schema/query support |
-| `67fc9e8` | 2026-07-27 | Add Kanji dictionary support | Pending bridge, storage, query, and popup support |
-| `3cd8294` | 2026-07-28 | Complete pitch string/nasal/devoice rendering | Pending bridge model and popup rendering |
-| `119fb5b` | 2026-06-18 | Advanced Anki definition mappings | Pending category-aware renderer/settings |
-| `bd85c9b` | 2026-06-19 | Multiple Anki card formats | Pending format storage/UI/popup routing |
-| `c943171`, `395218a` | 2026-06-19 / 2026-07-10 | Show existing Anki notes and own the setting in Anki | Pending show-notes action/setting |
-| `8464a2c`, `f1bc74b`, `2c86ed6` | 2026-06-20 | Cloze, pitch graph, and definition variant handlebars | Pending payload/renderer support |
-| `47683d9`, `2702e31` | 2026-06-20 | Guard invalid/deleted Anki formats | Pending multi-format validation |
-| `15d4a6e`, `23e0764` | 2026-06-15 / 2026-06-20 | Three-state revealable furigana mode and migration | Pending enum, migration, and tap semantics |
-| `eb86431`, `c31c9d0` | 2026-07-26 / 2026-07-31 | Split cross-page paragraphs with edge-case fixes | Pending Android paginated fragmenter |
-| `ff86caa` | 2026-07-28 | Explicitly load selected reader font | Pending computed-font load await |
-| `947898c` | 2026-07-01 | Export Sasayaki mining clips as MP3 | Pending Android MP3 encoder/export path |
-| `4a5cfde` | 2026-07-14 | Honor media-control skip mode | Pending MediaSession command routing |
-| `a9a0747` | 2026-07-28 | MP4/TXT Sasayaki imports | Pending SAF/storage updates |
-| `c6b29c8`, `1db2cd3` | 2026-07-26 | Cover fallback and Show/Blur/Hide modes | Pending metadata/settings/Compose UI |
-| `ed25036`, `8d1442e` | 2026-06-14 / 2026-07-01 | Popup masonry redesign and theme accents | Pending settings/assets/height range |
-| `53fdb72` | 2026-06-15 | Closeable Reader open-failure view | Pending route error UI |
+| `ed25036`, `8d1442e`, `0a91398` | 2026-06-14 / 07-01 / 08-22 | Popup layout/themes and dictionary CSS isolation | Pending settings/assets and div-scoped styles |
+| `53fdb72` | 2026-06-15 | Closeable Reader open-failure view | Pending localized route error UI |
 | `4dae37c` | 2026-06-13 | Drive timeouts and transient refresh suppression | Pending timeout/error normalization |
-| `bdf71a6` | 2026-06-07 | Remove Reader WebKit line-box property | Pending Android WebView validation |
+| `bdf71a6` | 2026-06-07 | Remove Reader WebKit line-box property | Pending removal of retained Android declaration |
+| `00f95c4`, `21971bb` | 2026-08-12 / 08-13 | Highlight ruby text and exact-range editing | Pending sidecar/bridge/range editing |
+| `b7f09ca` (search portion) | 2026-08-13 | Book search | Pending literal search, snippets and landing marks |
+| `7d7321f` | 2026-08-05 | Restore after renderer termination | Pending WebView recreation/state restore |
+| `165992a`, `e849e36` | 2026-08-16 / 08-17 | Frequency sorting and final labels | Pending Kotlin/JNI/settings; remaining overview wording |
+| `222a72b`, `7dd3f49` | 2026-08-31 / 09-02 | Import diagnostics and automatic low-RAM updates | Pending per-file reasons and automatic import policy |
+| `e6e2b4b` | 2026-08-19 | Remote book last access | Pending timestamp projection/Recent ordering |
+| `42e7b81` | 2026-09-14 | Reader navigation/options toolbar | Pending final Compose action/information layout |
+| `bd21e24`, `8024df1` | 2026-08-09 / 08-22 | Blue accent and font attribution | Pending palette/About UI |
 
 ## Suggested Implementation Order
 
-1. Dictionary categories, Kanji dictionaries, and complete pitch data.
-2. Multiple Anki card formats and advanced handlebars.
-3. Reader paginated paragraph splitting and explicit font readiness.
-4. Reader furigana reveal mode.
-5. Sasayaki import, media controls, and MP3 mining clips.
-6. Bookshelf cover privacy and fallback artwork.
-7. Lookup popup two-column layout and visual sizing.
-8. Reader route open-failure fallback.
-9. Google Drive timeout and automatic-refresh error suppression.
-10. Reader WebView line-box CSS parity.
+1. Renderer recovery (1) and localized open-failure fallback (2).
+2. Highlight sidecar/range editing (3), then book search remaining parity (4).
+3. Popup layout/CSS isolation (5).
+4. Native frequency options/import diagnostics, then settings and automatic
+   low-RAM update policy (6).
+5. Drive timeout/error suppression (7) and remote Recent sorting (8).
+6. Reader navigation/options toolbar (9), building on available statistics.
+7. Reader line-box CSS parity (10), app accent and font attribution (11).
 
 ## Covered Or No Android Action
 
+- `d8c086d`, `93ba3be` (statistics): Stats is always available, with tab-local
+  settings, archived deletion/reimport, folder-keyed daily editing and natural
+  calendar/all-time overview plus historical goals. Active/archive dates merge
+  by modification time using iOS-compatible sidecars and backup paths. Unset
+  sync defaults on; saved daily goals, opt-outs and Reader display preferences
+  remain, and Android keeps its two independent autostart settings and daily
+  goal defaults. Weekly summaries use the reading-time chart instead of a separate goal.
+  The current week opens by default; period paging and chart day/month drilldown drive
+  continuously displayed reading-time and book sections. The daily goal heatmap
+  is display-only and independent of chart selection.
+- `703347a`, `b7f09ca` (shared ruby normalization only): native
+  `ReaderTextFilter` and shared `reader-text-semantics.js` include Korean text;
+  native visible text excludes `rt`/`rp` contents. Reader-facts version 3
+  refreshes cached counts and TOC offsets. Existing Sasayaki matches are retained;
+  affected books need the SRT selected again. The search portion of `b7f09ca`
+  remains open in slice 4.
+- `7b9dda8`: both Anki backends resolve tag handlebars through the field resolver,
+  replacing substitution whitespace with underscores. New/rebuilt formats use
+  `hoshi`; saved tags retain their values.
+- `baccc84`: Android popup audio now returns every ranked, named local
+  candidate, exposes named enabled sources to the shared iframe, and provides a
+  long-press menu whose selected URL is shared by playback and Anki mining.
+  Popup replacement, redirects, Kanji lookup, and history restore clear the
+  entry-scoped candidate state.
+- `beb46ba`, `969b978`: Dictionary search now shows tappable source text with
+  profile-scoped 12–48 sizing, matched spans, preserved redirect scroll, and
+  original-sentence/UTF-16 Anki cloze context. The same root-only behavior also
+  covers Android Process Text/shared lookups, including an empty initial match.
+- `15d4a6e`, `23e0764`, `a4e16df`, `253a589`: Android now provides
+  profile-scoped Off/Dimmed/Toggle/Hidden furigana modes, migrates legacy hide
+  booleans, consumes Toggle reveal taps, reveals whitespace-adjacent ruby, and
+  retains VN reveal state across screen rendering.
+- `c6b29c8`, `1db2cd3`: Android now stores the first EPUB creator as optional
+  compatible book metadata, renders deterministic title/author fallback artwork,
+  and applies persisted Show/Blur/Hide privacy modes across local, remote,
+  expanded, and collapsed bookshelf covers. Android 8-11 safely maps Blur to the
+  hidden fallback because the platform blur effect starts on Android 12.
+- `eb86431`, `c31c9d0`, `ff86caa`: the paragraph fragmenter and explicit font
+  request are WKWebView-specific selection/layout workarounds. Android's
+  paginated reader already locks Chromium WebView scrolling during native
+  selection and awaits used fonts before restore; copying the DOM fragmenter
+  would add offset, highlight, progress, and Sasayaki mapping risk without a
+  reproduced Android behavior gap.
+- `947898c`, `4a5cfde`, `a9a0747`: no Android product action. Android's
+  `SasayakiCueAudioExporter` emits platform-supported AAC/ADTS clips that both
+  Anki backends already consume; adding an MP3 encoder only to match an iOS
+  filename is not justified. Media3 keeps previous/next cue navigation separate
+  from Reader skip-by-seconds controls, and the supported `.srt`, `.mp3`, and
+  `.m4b` import set intentionally excludes generic `.txt` and `.mp4` aliases.
+- `9eff7dd`, `67fc9e8`, `3cd8294`: Android now persists term-dictionary
+  categories, supports Kanji dictionaries, and renders numeric/H/L pitch plus
+  1-based nasal/devoice popup indicators. The iOS Anki pitch SVG generator does
+  not encode nasal/devoice indicators, so Android's exported SVGs require no
+  additional platform action.
+- `119fb5b`, `bd85c9b`, `c943171`, `395218a`, `8464a2c`, `f1bc74b`,
+  `2c86ed6`, `47683d9`, `2702e31`: Android now has three independent Anki
+  formats, show-notes routing for both backends, guards for invalid formats,
+  precise cloze and pitch graph handlebars, and category-aware monolingual/
+  bilingual definition variants resolved from persisted dictionary order.
 - `d7fe3f2`: Android Sasayaki now exposes -4...4-second delay and 0.5...3x
   playback-speed sliders with the existing 0.05 step size.
 - `4940ab7`, `6655ffd`, `3bff390`: Android now removes numeric HTML entities
@@ -533,8 +546,9 @@ Validation:
 - `98f0ef4`: merge-only history integration; its reachable behavior commits are
   classified individually above.
 - `e833279`, `e7b08b8`, `1992872`, `c1e4e57`: intermediate hoshidicts bumps are
-  superseded by the final dictionary behavior audited above; only the missing
-  final bridge capabilities remain queued.
+  superseded by the final dictionary behavior; Android already exposes Kanji,
+  pitch and transcription data. Explicit frequency option integration is the
+  remaining bridge gap described in slice 6.
 - `77a7eaa`, `19bd095`: iOS cleanup and unwrap removal do not define additional
   Android-visible behavior.
 - `188284b`: iOS local-audio launch/actor initialization fix has no direct
@@ -574,3 +588,48 @@ Validation:
   autocorrection, and touch-tolerance implementation changes have no direct
   Compose/WebView parity action beyond Android's existing IME and configurable
   popup swipe handling.
+- `16825e4`: Android's native EPUB parser and `EpubBookParser.toReaderBook()`
+  already resolve nested EPUB3 nav/EPUB2 NCX paths; tracked generated fixtures
+  in `EpubBookParserTest` cover both paths and fragments.
+- `eced649`: `ReaderGoToSheet.kt` uses
+  `rememberInitiallyCenteredLazyListState()` for the current chapter, including
+  hiding content until centering completes and no ongoing selection-following.
+- `dd5e7a2`: `KanjiStrokeOrderFontInstaller`, `DictionaryViewModel` and
+  Dictionary UI already implement confirmed verified download/import and the
+  installed-font disabled state, with installer tests.
+- `c96acb3`: `SasayakiMatcher.selectCoherentAlignment()` ranks starting
+  candidates and `selectRecoveryPlan()` handles consecutive local misses;
+  `SasayakiMatcherTest` covers repeated text and multi-volume recovery.
+- `63d96a1`: the SwiftUI geometry feedback/crash fix has no matching Android
+  path. `StatisticsDistributionList.kt` uses Compose bounded row/bar sizing
+  rather than a geometry observer feeding its own measured width.
+- `7994b59`: CoreText continuation double-resume is iOS-specific; Android font
+  downloads use cancellable repository coroutines and verified temporary files.
+- `17ceb79`: iOS modal presenter rejection is platform-specific. Android Reader
+  is a typed Navigation3 route with an explicit close path, not a separately
+  presented reader window; its open-error UI gap remains slice 2.
+- `f6b15bc`: iOS AppIntents are platform shortcuts, not a portable API.
+  Android already routes Page Up/Down and enabled volume keys through
+  `ReaderHardwareKeyNavigation`; no distinct Android external shortcut contract
+  is introduced by this upstream commit.
+- `7c50443`, `434ed70`, `aa1994f`: dependency revision metadata only. Android's
+  vendored native library already supports frequency `LookupOptions`, IPA/
+  transcriptions and importer error results; expose missing Kotlin/JNI behavior
+  in slice 6 rather than queueing revision bumps.
+- `7dd3f49` (query-release mechanics): Android's
+  `DictionaryLookupQueryService.rebuild()` serializes complete replacement
+  sessions and destroys the prior session after its atomic swap; the Swift
+  bundle-release sequence is not an extra Android behavior requirement. The
+  automatic low-RAM difference remains slice 6.
+- `93ba3be` (popup defaults): Android already defaults popup width/height to
+  500/500 and permits height 1000, exceeding the iOS increase to 350/310.
+  Statistics sync defaults on only when unset.
+- `8024df1` (SwiftLAME attribution): Android does not ship SwiftLAME; no action.
+  Attribution for the downloadable stroke-order font remains slice 11.
+- `efd89fc`, `e1b0854`: README/issue-template changes only.
+- `0425880`, `c71a2a9`, `d76127d`, `f86eb95`, `d8e150d`, `8137e1e`:
+  iOS version metadata only.
+- `50aaa6f`: merge integration only; reachable behavior commits are classified
+  individually above.
+- `27510b0`: removal of old iOS storage migrations has no Android action;
+  retain Android's own compatibility migrations.

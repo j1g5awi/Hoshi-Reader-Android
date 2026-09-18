@@ -27,7 +27,7 @@
     <string name="action_edit">Edit</string>
     <string name="action_choose">Choose</string>
     <string name="action_open">Open</string>
-    <string name="action_more">More</string>
+    <string name="action_more" comment="Generic action to reveal additional choices, distinct from the heatmap intensity endpoint.">More</string>
     <string name="action_fetch">Fetch</string>
     <string name="action_connect">Connect</string>
     <string name="action_sign_out">Sign out</string>
@@ -50,37 +50,19 @@
     <string name="main_tab_settings" comment="Main navigation tab label, intentionally matching settings page titles.">Settings</string>
     <string name="statistics_title" comment="Statistics page title, intentionally matching the main tab label.">Statistics</string>
     <string name="statistics_today" comment="Statistics dashboard section title, intentionally matching reader statistics today label.">Today</string>
-    <string name="statistics_this_week">This Week</string>
-    <string name="statistics_target_format">Goal: %1$s</string>
     <string name="statistics_reading_duration" comment="Dashboard metric label, intentionally matching the duration legend and target type label.">Duration</string>
-    <string name="statistics_characters_read" comment="Dashboard metric label, intentionally matching the characters legend and target type label.">Characters</string>
-    <string name="statistics_average_speed" comment="Dashboard metric label, intentionally matching the Sasayaki speed setting noun.">Speed</string>
-    <string name="statistics_streak">Streak</string>
+    <string name="statistics_characters_read">Characters Read</string>
+    <string name="statistics_average_speed">Reading Speed</string>
     <string name="statistics_target_days">Days Met</string>
-    <string name="statistics_daily_average_characters">Avg Characters</string>
-    <string name="statistics_daily_average_duration">Avg Duration</string>
-    <string name="statistics_week_goal_days" comment="Weekly dashboard section label, intentionally matching the current-range goal progress metric.">Goal Progress</string>
-    <string name="statistics_week_status_format">%1$d/7 days</string>
-    <string name="statistics_reading_calendar">Calendar</string>
-    <string name="statistics_recent_year">Recent year</string>
     <string name="statistics_range_year">Year</string>
     <string name="statistics_range_month">Month</string>
     <string name="statistics_range_week">Week</string>
-    <string name="statistics_range_day">Day</string>
     <string name="statistics_selected_range_format">Selected: %1$s</string>
-    <string name="statistics_current_range">Selected Range</string>
-    <string name="statistics_tab_overview">Overview</string>
-    <string name="statistics_tab_trend">Trend</string>
-    <string name="statistics_tab_distribution">By Book</string>
-    <string name="statistics_target_progress" comment="Current-range metric label, intentionally matching the weekly dashboard goal progress label.">Goal Progress</string>
-    <string name="statistics_monthly_trend">Monthly Trend</string>
-    <string name="statistics_daily_trend">Daily Trend</string>
+    <string name="statistics_target_progress">Goal Progress</string>
     <string name="statistics_duration" comment="Trend legend label, intentionally matching duration target type label.">Duration</string>
     <string name="statistics_characters" comment="Trend legend label, intentionally matching characters target type label.">Characters</string>
     <string name="statistics_daily_target">Daily Goal</string>
     <string name="statistics_current_target">Current Goal</string>
-    <string name="statistics_weekly_target">Weekly Goal</string>
-    <string name="statistics_week_status">Reading Days</string>
     <string name="statistics_target_type_characters" comment="Daily target type option, intentionally matching statistics characters legend label.">Characters</string>
     <string name="statistics_target_type_duration" comment="Daily target type option, intentionally matching statistics duration legend label.">Duration</string>
     <string name="statistics_no_reading_records">No reading records</string>
@@ -88,8 +70,6 @@
     <string name="statistics_partial_unavailable">Some statistics are temporarily unavailable.</string>
     <string name="statistics_target_met">Goal met</string>
     <string name="statistics_target_not_met">Goal not met</string>
-    <string name="statistics_calendar_heatmap_semantics">Reading calendar heatmap</string>
-    <string name="statistics_empty_goal_value">-</string>
     <string name="statistics_trend_legend_format">%1$s / %2$s</string>
     <string name="statistics_character_target_format" comment="Daily character target value, intentionally matching generic statistics character value format.">%1$s chars</string>
     <string name="statistics_duration_target_format">%1$s</string>
@@ -100,10 +80,10 @@
     <string name="statistics_duration_hours_format">%1$dh</string>
     <string name="statistics_duration_hours_minutes_format">%1$dh %2$dm</string>
     <string name="statistics_range_fixed_year_format">%1$d</string>
-    <string name="statistics_range_month_title_format">%1$d-%2$d</string>
+    <string name="statistics_range_month_title_pattern">MMMM yyyy</string>
     <string name="statistics_range_week_title_format">%1$d/%2$d-%3$d/%4$d</string>
     <string name="statistics_range_day_title_format">%1$d/%2$d %3$s</string>
-    <string name="statistics_distribution_meta_format">%1$s · %2$s</string>
+    <string name="statistics_distribution_meta_format" comment="Book editor character and duration metadata, sharing the separator with the overview caption.">%1$s · %2$s</string>
     <string name="statistics_distribution_cover_placeholder">Book cover placeholder</string>
     <string name="statistics_weekday_monday_short">M</string>
     <string name="statistics_weekday_tuesday_short" comment="Single-letter Tuesday label, intentionally matching Thursday in English.">T</string>
@@ -122,10 +102,6 @@
     <plurals name="statistics_days_value">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
-    </plurals>
-    <plurals name="statistics_weeks_value">
-        <item quantity="one">%1$d week</item>
-        <item quantity="other">%1$d weeks</item>
     </plurals>
     <string name="settings_dictionaries" comment="Settings row label, intentionally matching the backup Dictionaries section.">Dictionaries</string>
     <string name="settings_anki">Anki</string>
@@ -187,7 +163,7 @@
     <string name="bookshelf_delete_selected_books">Delete selected books</string>
     <string name="bookshelf_manage_shelves">Manage Shelves</string>
     <string name="bookshelf_import_epub">Import EPUB</string>
-    <string name="bookshelf_sync">Sync</string>
+    <string name="bookshelf_sync" comment="Bookshelf sync action, intentionally matching the Statistics settings Sync heading.">Sync</string>
     <string name="bookshelf_move">Move</string>
     <string name="bookshelf_mark_read">Mark Read</string>
     <string name="bookshelf_export_epub">Export EPUB</string>
@@ -347,7 +323,7 @@
     <string name="reader_highlight_action">Highlight</string>
     <string name="reader_statistics_session">Session</string>
     <string name="reader_statistics_today" comment="Reader statistics section title, intentionally matching dashboard today label.">Today</string>
-    <string name="reader_statistics_all_time">All Time</string>
+    <string name="reader_statistics_all_time" comment="Reader lifetime summary tab, independent of the dashboard period caption.">All Time</string>
     <string name="reader_statistics_time_to_finish_book">Time to finish Book:</string>
     <string name="reader_statistics_time_to_finish_chapter">Time to finish Chapter:</string>
     <string name="reader_statistics_characters_read">Characters Read:</string>
@@ -356,11 +332,14 @@
     <string name="reader_statistics_reading_time">Reading Time:</string>
     <string name="reader_statistics_show_tab">Show Statistics tab</string>
     <string name="reader_statistics_autostart">Autostart</string>
+    <string name="reader_statistics_autostart_on_book_open">Start on Book Open</string>
+    <string name="reader_statistics_autostart_on_page_turn">Start on Page Turn</string>
     <string name="reader_statistics_reset_time">Reset Time</string>
     <string name="reader_statistics_autostart_off" comment="Reader statistics autostart setting value; intentionally matches other off labels.">Off</string>
     <string name="reader_statistics_autostart_page_turn">Page Turn</string>
     <string name="reader_statistics_autostart_on">On</string>
     <string name="reader_statistics_sync_behaviour">Sync Behaviour</string>
+    <string name="reader_statistics_sync_behaviour_hint">Determines whether statistics are merged entry by entry or replaced completely during sync.</string>
     <string name="reader_statistics_sync_mode_merge">Merge</string>
     <string name="reader_statistics_sync_mode_replace">Replace</string>
     <string name="reader_statistics_settings_hint">Statistics can be accessed from the Reader\'s context menu.</string>
@@ -521,8 +500,6 @@
     <string name="backup_exporting">Exporting...</string>
     <string name="backup_importing" comment="ッツ backup import progress label, intentionally matching the generic importing progress text.">Importing...</string>
     <string name="advanced_audio">Audio</string>
-    <string name="advanced_statistics" comment="Advanced settings row label, intentionally matching reader statistics label.">Statistics</string>
-    <string name="advanced_statistics_subtitle">Track per-book reading time, speed, and characters read</string>
     <string name="advanced_sasayaki_audiobooks">Sasayaki (Audiobooks)</string>
     <string name="advanced_sasayaki_subtitle">Read along with matched audiobook subtitles</string>
     <string name="audio_sources">Sources</string>
@@ -725,4 +702,57 @@
     <string name="book_cover_scale_fill_summary">Fill the screen while preserving proportions, cropping overflow.</string>
     <string name="book_cover_scale_stretch">Stretch</string>
     <string name="book_cover_scale_stretch_summary">Fill the screen without preserving the cover’s proportions.</string>
+    <string name="statistics_sync_heading" comment="Statistics settings section heading, intentionally matching the bookshelf Sync action.">Sync</string>
+    <string name="statistics_archive_heading">Archive</string>
+    <string name="statistics_clear_archive">Clear Archive</string>
+    <string name="statistics_clear_archive_confirmation">Delete statistics for %1$d archived books? Statistics for books in your library will be kept.</string>
+    <plurals name="statistics_archived_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="statistics_operation_failed">Could not update or load statistics. Please try again.</string>
+    <string name="statistics_book_unavailable">Statistics for this book are no longer available.</string>
+    <string name="statistics_delete_all">Delete All Statistics</string>
+    <string name="statistics_delete_all_confirmation">Delete all local statistics for this book? Merging with synced statistics may restore deleted records.</string>
+    <string name="statistics_edit_hours">Hours</string>
+    <string name="statistics_edit_minutes">Minutes</string>
+    <string name="statistics_range_all">All</string>
+    <string name="statistics_average_change_week_format">%1$s%% from previous week</string>
+    <string name="statistics_average_change_month_format">%1$s%% from previous month</string>
+    <string name="statistics_average_change_year_format">%1$s%% from previous year</string>
+    <string name="statistics_current_streak">Current streak</string>
+    <string name="statistics_longest_streak">Longest streak</string>
+    <string name="statistics_best_day">Best day</string>
+    <string name="statistics_date_interval_format">%1$s – %2$s</string>
+    <string name="bookshelf_delete_failed">Could not delete the book or save its statistics archive. The book has been kept.</string>
+    <plurals name="statistics_history_reading_days">
+        <item quantity="one">of %1$d day read</item>
+        <item quantity="other">of %1$d days read</item>
+    </plurals>
+    <string name="statistics_goal_clock_format">%1$d:%2$02d</string>
+    <string name="statistics_goal_characters_link_format">/ %1$s character goal</string>
+    <string name="statistics_goal_minutes_link_format">/ %1$d minute goal</string>
+    <string name="statistics_history_short_date_pattern">MMM d</string>
+    <string name="statistics_history_since_format">since %1$s</string>
+    <string name="statistics_reading_time">Reading Time</string>
+    <string name="statistics_books" comment="Statistics book list heading, intentionally matching the main Books tab and backup section.">Books</string>
+    <string name="statistics_total_time">Total Time</string>
+    <string name="statistics_chart_average">avg</string>
+    <string name="statistics_chart_hours_format">%1$sh</string>
+    <string name="statistics_show_more_books">Show More</string>
+    <string name="statistics_heatmap_month_year_pattern">yyyy/M</string>
+    <string name="statistics_period_daily_average_format">%1$s Daily Average</string>
+    <string name="statistics_period_monthly_average_format">%1$s Monthly Average</string>
+    <string name="statistics_range_all_time" comment="Dashboard period caption, independent of the Reader statistics summary.">All Time</string>
+    <string name="statistics_heatmap_less">Less</string>
+    <string name="statistics_heatmap_more" comment="Upper endpoint of the reading intensity scale, distinct from the More action.">More</string>
+    <string name="statistics_goal_picker_title">Goal</string>
+    <string name="statistics_goal_characters_per_day">characters per day</string>
+    <string name="statistics_goal_minutes_per_day">minutes per day</string>
+    <string name="statistics_goal_save_failed">Could not save the goal. Please try again.</string>
+    <string name="statistics_days_heading">Days</string>
+    <string name="statistics_chart_weekday_pattern">EEEEE</string>
+    <string name="statistics_chart_day_pattern">d</string>
+    <string name="statistics_chart_month_pattern">MMMMM</string>
+    <string name="statistics_chart_month_year_pattern">MMM yy</string>
 </resources>

@@ -3,6 +3,7 @@ package moe.antimony.hoshi.epub
 import android.content.ContentResolver
 import android.net.Uri
 import java.io.File
+import java.io.InputStream
 import java.time.Instant
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -32,28 +33,27 @@ class BookRepository private constructor(
     private val fileDataSource: BookFileDataSource,
     private val sidecarDataSource: BookSidecarDataSource,
     private val clock: BookClock,
+    internal val statisticsStore: BookStatisticsStore,
 ) : ReaderRouteBookRepository, SasayakiSidecarRepository {
     @Inject
     constructor(
         @FilesDir filesDir: File,
         @IoDispatcher ioDispatcher: CoroutineDispatcher,
+        statisticsStore: BookStatisticsStore,
     ) : this(
         filesDir = filesDir,
         ioDispatcher = ioDispatcher,
         fileDataSource = BookFileDataSource(filesDir, ioDispatcher),
         sidecarDataSource = BookSidecarDataSource(ioDispatcher),
         clock = SystemBookClock,
+        statisticsStore = statisticsStore,
     )
 
-    constructor(filesDir: File) : this(filesDir, Dispatchers.IO)
+    constructor(filesDir: File, ioDispatcher: CoroutineDispatcher = Dispatchers.IO) :
+        this(filesDir, ioDispatcher, BookStatisticsStore(filesDir, ioDispatcher))
 
     private val archiveExtractor = EpubArchiveExtractor()
-    private val importDataSource = BookImportDataSource(
-        filesDir,
-        fileDataSource,
-        ioDispatcher = ioDispatcher,
-        findDeletedBookRoot = ::findDeletedBookRoot,
-    )
+    private val importDataSource = BookImportDataSource(filesDir, fileDataSource, ioDispatcher = ioDispatcher)
 
     private val legacyPackedMigrationMutex = Mutex()
 
@@ -72,8 +72,7 @@ class BookRepository private constructor(
         }
         var legacyMigrationCurrent = 0
         val entries = roots
-            .mapNotNull { (root, metadata) ->
-                if (metadata?.deleted == true) return@mapNotNull null
+            .map { (root, metadata) ->
                 if (shouldMigrateLegacyExtractedBookToPackedEpub(root, metadata)) {
                     legacyMigrationCurrent += 1
                     onLegacyBookMigrationProgress(
@@ -150,20 +149,18 @@ class BookRepository private constructor(
         bookRoot: File,
         releasePersistedSasayakiAudioUri: (String) -> Unit = {},
     ) {
-        val metadata = loadMetadata(bookRoot) ?: return
-        val removedId = metadata.id
-        loadSasayakiPlayback(bookRoot)?.audioUri?.let { uri ->
-            runCatching { releasePersistedSasayakiAudioUri(uri) }
+        val removedId = loadMetadata(bookRoot)?.id ?: bookRoot.name
+        statisticsStore.archiveAndDelete(bookRoot) {
+            loadSasayakiPlayback(bookRoot)?.audioUri?.let { uri ->
+                runCatching { releasePersistedSasayakiAudioUri(uri) }
+            }
+            fileDataSource.deleteBook(bookRoot)
         }
-        fileDataSource.deleteBookContent(bookRoot, metadata)
-        saveMetadata(bookRoot, metadata.copy(deleted = true))
         val cleanedShelves = loadShelves().map { shelf ->
             shelf.copy(bookIds = shelf.bookIds.filterNot { it == removedId })
         }
         saveShelves(cleanedShelves)
     }
-
-
 
     suspend fun loadShelves(): List<BookShelf> =
         sidecarDataSource.loadShelves(fileDataSource.booksDirectory).orEmpty()
@@ -188,10 +185,22 @@ class BookRepository private constructor(
     }
 
     override suspend fun loadStatistics(bookRoot: File): List<ReadingStatistics> =
-        sidecarDataSource.loadStatistics(bookRoot).orEmpty()
+        statisticsStore.load(bookRoot).orEmpty()
 
-    override suspend fun saveStatistics(bookRoot: File, statistics: List<ReadingStatistics>) {
-        sidecarDataSource.saveStatistics(bookRoot, statistics)
+    suspend fun saveStatistics(bookRoot: File, statistics: List<ReadingStatistics>) {
+        statisticsStore.save(bookRoot, statistics)
+    }
+
+    override suspend fun saveTrackedStatistics(bookRoot: File, statistics: List<ReadingStatistics>) {
+        statisticsStore.saveTrackedDays(bookRoot, statistics)
+    }
+
+    suspend fun updateStatistics(bookRoot: File, transform: (List<ReadingStatistics>) -> List<ReadingStatistics>) {
+        statisticsStore.update(bookRoot, transform)
+    }
+
+    suspend fun restoreArchivedStatistics(folder: String) {
+        statisticsStore.restore(folder)
     }
 
     suspend fun loadHighlights(bookRoot: File): List<ReaderHighlight> =
@@ -234,31 +243,8 @@ class BookRepository private constructor(
 
     override fun currentAppleReferenceDateSeconds(): Double = clock.currentAppleReferenceDateSeconds()
 
-    suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File {
-        val root = importDataSource.importBook(contentResolver, uri)
-        runCatching {
-            val metadata = loadMetadata(root)
-            if (metadata?.deleted == true) {
-                saveMetadata(root, metadata.copy(
-                    deleted = false,
-                    lastAccess = clock.currentAppleReferenceDateSeconds(),
-                ))
-            }
-        }
-        return root
-    }
-
-    private suspend fun findDeletedBookRoot(safeTitle: String): File? {
-        val deletedSuffix = "_deleted"
-        return fileDataSource.loadAllBooks().firstOrNull { root ->
-            val metadata = loadMetadata(root)
-            metadata?.deleted == true && (
-                root.name == safeTitle ||
-                root.name.removeSuffix(deletedSuffix) == safeTitle ||
-                metadata.folder == safeTitle
-            )
-        }
-    }
+    suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File =
+        importDataSource.importBook(contentResolver, uri)
 
     private suspend fun File.fallbackMetadata(): BookMetadata = withContext(ioDispatcher) {
         BookMetadata(
@@ -401,7 +387,7 @@ interface ReaderRouteBookRepository {
     suspend fun loadBookmark(bookRoot: File): Bookmark?
     suspend fun saveBookmark(bookRoot: File, bookmark: Bookmark)
     suspend fun loadStatistics(bookRoot: File): List<ReadingStatistics>
-    suspend fun saveStatistics(bookRoot: File, statistics: List<ReadingStatistics>)
+    suspend fun saveTrackedStatistics(bookRoot: File, statistics: List<ReadingStatistics>)
     suspend fun loadReaderBookInfo(bookRoot: File): BookInfo?
     suspend fun saveBookInfo(bookRoot: File, bookInfo: BookInfo)
     fun currentAppleReferenceDateSeconds(): Double
@@ -423,16 +409,24 @@ class BookFileDataSource(
     val currentBookFile: File = File(booksDirectory, "current.epub")
 
     suspend fun loadAllBooks(): List<File> = withContext(ioDispatcher) {
+        migrateReservedStatisticsBook(booksDirectory)
         booksDirectory
             .listFiles()
-            ?.filter { it.isDirectory && !it.name.startsWith(".") }
+            ?.filter { it.isDirectory && !it.name.startsWith(".") && it.name != STATISTICS_ARCHIVE_DIRECTORY }
             ?.sortedByDescending { it.lastModified() }
             .orEmpty()
     }
 
     suspend fun createBookDirectory(folder: String = UUID.randomUUID().toString()): File = withContext(ioDispatcher) {
         booksDirectory.mkdirs()
-        val root = booksDirectory.resolve(folder).canonicalFile
+        migrateReservedStatisticsBook(booksDirectory)
+        val storageFolder = if (folder == STATISTICS_ARCHIVE_DIRECTORY) folder.toImportedBookStorageName() else folder
+        val requestedRoot = booksDirectory.resolve(storageFolder).canonicalFile
+        val root = requestedRoot.takeIf { it.exists() }
+            ?: booksDirectory.listFiles().orEmpty().firstOrNull {
+                it.isDirectory && it.name.normalizedBookFolder() == storageFolder.normalizedBookFolder()
+            }?.canonicalFile
+            ?: requestedRoot
         val booksRoot = booksDirectory.canonicalFile
         require(root.path == booksRoot.path || root.path.startsWith(booksRoot.path + File.separator)) {
             "Unsafe book folder: $folder"
@@ -442,7 +436,7 @@ class BookFileDataSource(
     }
 
     suspend fun createBookDirectoryForImportedTitle(title: String): File {
-        val safeTitle = title.sanitizeImportedBookTitle()
+        val safeTitle = title.toImportedBookStorageName()
         require(safeTitle.isNotBlank()) { "EPUB title is empty" }
         return createBookDirectory(safeTitle)
     }
@@ -516,16 +510,6 @@ class BookFileDataSource(
             root.deleteRecursively()
         }
     }
-
-    suspend fun deleteBookContent(bookRoot: File, metadata: BookMetadata) = withContext(ioDispatcher) {
-        val root = bookRoot.canonicalFile
-        val booksRoot = booksDirectory.canonicalFile
-        require(root.path != booksRoot.path && root.path.startsWith(booksRoot.path + File.separator)) {
-            "Unsafe book directory: ${bookRoot.path}"
-        }
-        metadata.epub?.let { root.resolve(it).delete() }
-        root.resolve("Sasayaki").deleteRecursively()
-    }
 }
 
 class BookImportDataSource(
@@ -534,38 +518,38 @@ class BookImportDataSource(
     private val parser: EpubBookParser = EpubBookParser(),
     private val archiveExtractor: EpubArchiveExtractor = EpubArchiveExtractor(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val findDeletedBookRoot: (suspend (String) -> File?)? = null,
 ) {
     suspend fun importBook(contentResolver: ContentResolver, uri: Uri): File = withContext(ioDispatcher) {
         val displayName = contentResolver.validateImportFile(uri, ImportFileType.Epub)
+        contentResolver.openInputStream(uri).use { input ->
+            importBook(
+                displayName = displayName,
+                input = requireNotNull(input) { "Unable to open selected EPUB" },
+            )
+        }
+    }
+
+    internal suspend fun importBook(displayName: String, input: InputStream): File = withContext(ioDispatcher) {
         val fallbackTitle = displayName
             .substringBeforeLast('.', missingDelimiterValue = displayName)
             .takeIf { it.isNotBlank() }
         val importRoot = File(filesDir, "ImportTemp/${UUID.randomUUID()}").canonicalFile
         val archiveFile = importRoot.resolve("source.epub").canonicalFile
         val extractedRoot = importRoot.resolve("extracted").canonicalFile
-        contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "Unable to open selected EPUB" }
-            runCatching {
-                importRoot.mkdirs()
-                archiveFile.outputStream().use { output -> input.copyTo(output) }
-                archiveExtractor.extract(archiveFile, extractedRoot)
-            }.onFailure {
-                importRoot.deleteRecursively()
-                throw it
-            }
-        }
-        val parsedBook = runCatching { parser.parse(extractedRoot, fallbackTitle = fallbackTitle) }
-            .onFailure { importRoot.deleteRecursively() }
-            .getOrThrow()
-        val safeTitle = parsedBook.title.sanitizeImportedBookTitle()
-        val targetRoot = findDeletedBookRoot?.invoke(safeTitle) ?: fileDataSource.createBookDirectory(safeTitle)
         try {
-            targetRoot.mkdirs()
-            if (!targetRoot.isDirectory) error("Unable to create book directory")
-            val packedEpub = targetRoot.resolve("${targetRoot.name}.epub")
-            archiveFile.copyTo(packedEpub, overwrite = true)
-            targetRoot
+            importRoot.mkdirs()
+            archiveFile.outputStream().use { output -> input.copyTo(output) }
+            archiveExtractor.extract(archiveFile, extractedRoot)
+            val parsedBook = parser.parse(extractedRoot, fallbackTitle = fallbackTitle)
+            val targetRoot = fileDataSource.createBookDirectoryForImportedTitle(parsedBook.title)
+            if (targetRoot.listFiles()?.isNotEmpty() == true) {
+                targetRoot
+            } else {
+                targetRoot.mkdirs()
+                val packedEpub = targetRoot.resolve("${targetRoot.name}.epub")
+                archiveFile.copyTo(packedEpub, overwrite = true)
+                targetRoot
+            }
         } finally {
             importRoot.deleteRecursively()
         }
@@ -642,10 +626,11 @@ class BookSidecarDataSource(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     @OptIn(ExperimentalSerializationApi::class)
-    internal val json = Json {
+    private val json = Json {
         prettyPrint = true
         prettyPrintIndent = "    "
         encodeDefaults = true
+        explicitNulls = false
         ignoreUnknownKeys = true
     }
 
@@ -661,19 +646,6 @@ class BookSidecarDataSource(
 
     suspend fun saveBookmark(bookRoot: File, bookmark: Bookmark) {
         saveJson(bookRoot, BOOKMARK_FILE_NAME, Bookmark.serializer(), bookmark)
-    }
-
-    suspend fun loadStatistics(bookRoot: File): List<ReadingStatistics>? =
-        loadJson(ListSerializer(ReadingStatistics.serializer()), bookRoot.resolve(STATISTICS_FILE_NAME))
-            ?.deduplicateReadingStatistics()
-
-    suspend fun saveStatistics(bookRoot: File, statistics: List<ReadingStatistics>) {
-        saveJson(
-            bookRoot,
-            STATISTICS_FILE_NAME,
-            ListSerializer(ReadingStatistics.serializer()),
-            statistics.deduplicateReadingStatistics(),
-        )
     }
 
     suspend fun loadHighlights(bookRoot: File): List<ReaderHighlight>? =
@@ -753,11 +725,6 @@ private val bookSidecarFileNames = setOf(
     SASAYAKI_MATCH_FILE_NAME,
     SASAYAKI_PLAYBACK_FILE_NAME,
 )
-
-private fun String.sanitizeImportedBookTitle(): String =
-    split(Regex("[\\\\/:*?\"<>|\\n\\r\\u0000-\\u001F]"))
-        .joinToString("_")
-        .trim()
 
 private fun String.sanitizeRootFileName(): String =
     split(Regex("[\\\\/:*?\"<>|\\n\\r\\u0000-\\u001F]"))

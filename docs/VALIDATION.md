@@ -46,6 +46,11 @@ For localization changes, run:
 ./gradlew :app:testDebugUnitTest --tests moe.antimony.hoshi.LocalizationResourceTest
 ```
 
+When separate translation contexts intentionally share an English string value,
+add a `comment` explaining the context to every duplicate entry, including the
+existing entry, and mirror those comments in Chinese resources.
+`DuplicateCrowdInStrings` still fails if only the new entry has a comment.
+
 For reader web asset changes, run the focused JavaScript tests:
 
 ```bash
@@ -195,6 +200,126 @@ Validate relevant bookshelf/import changes with:
   the Reader chrome back action.
 - bookmark restoration and bookshelf progress refresh after returning from
   Reader.
+
+## Statistics
+
+Preserve existing app data when validating statistics:
+
+- After upgrading with the former statistics and tab switches disabled, Stats
+  is still visible. Its upper-right Settings button opens the tab-local settings
+  route; returning from settings or a book editor preserves dashboard period,
+  selected chart bucket, heatmap scroll and page scroll. Advanced has no Statistics row.
+- Statistics settings groups both autostart switches together with the Reader
+  access hint below, then reset time in its own group. Sync has a heading and
+  Merge/Replace explanation below its two rows; Archive has a heading, a clear
+  action and a book-count footer. Verify Sync is absent when global sync is off,
+  Archive is absent when empty, and clear still requires confirmation. Check
+  English/Chinese narrow layouts, light/dark and E-ink borders.
+- Unset statistics sync defaults on; an explicit opt-out remains off. Both
+  autostart options default off and work independently. Opening Stats does not
+  start tracking, and existing daily goals and Reader display preferences stay
+  unchanged. Check manual start/stop, modal pause, foreground/background and
+  close-save paths alongside the Reader matrix above.
+- Delete one book and a selected batch with active dates, no activity and an
+  undecodable cover. Active history remains visible with an archive marker;
+  required archive write/read failures keep the affected book and show an error.
+  The distribution marks archived books with a small trash icon; their detail
+  page has the same book title and Days section as local books, without an extra
+  Archived label. Dashboard and book-page titles keep the same size and weight
+  during navigation and loading; long book titles remain on one ellipsized line.
+  Restore the same normalized folder via EPUB, Drive, TTU and Books `.hoshi`;
+  newer dates win, equal dates keep the specified first input, and interrupted
+  restore duplicates are counted once. Include NFC/NFD-equivalent paths and
+  iOS archives with omitted cover metadata or long folder names.
+- Open a distribution row from a short period and verify that the editor shows
+  all dates in ascending order. Verify grouped row dividers, date and character
+  count on the left, duration and chevron on the right, and matching chevrons in
+  the book distribution. Check half-minute rounding, character/hour/minute
+  editing, cancel, zero removal, single-day deletion from inside the edit sheet
+  (no delete action on the date list), confirmed delete-all,
+  last-archive cleanup and confirmed archive clearing. Failures retain input;
+  return/resume refreshes aggregates. Merge may restore remote deleted records;
+  deleting locally does not claim to clear the remote copy.
+  In light/dark E-ink, the date rows have one continuous rounded outer outline,
+  inset internal dividers, and an outlined delete-all button. Check one record,
+  several records, and scrolling a long list; normal themes keep filled groups.
+- The dashboard contains Daily Goal (gauge, history and display-only heatmap),
+  Reading Time, and Books, with uniform headings and grouped cards. There is no
+  separate calendar, heatmap date selection, yearly dropdown, Day segment,
+  This Week card or weekly target editor. Upgrades preserve daily goals and data.
+- Tap the daily goal to open the anchored value wheel without moving the page.
+  It starts at the saved value, snaps after scrolling, and supports tapping a
+  nearby value. Switching Characters/Duration preserves each saved target;
+  outside tap and Back dismiss it. Cover both ends of each range, reopen,
+  E-ink contrast and persistence failure/retry. In light and dark E-ink modes,
+  both goal types have a visible fixed center outline enclosing the snapped
+  value; normal mode retains its filled selection band.
+- Check the current Week as the initial reading-time period, including while
+  loading; returning from settings or a book editor preserves a manual selection.
+  Week/Month/Year/All switching
+  lives in Reading Time; each mode starts at the current period. Swipe the chart
+  to browse earlier natural periods, stopping at the first activity and today;
+  All does not page. Check cross-year weeks, leap February, locale week starts,
+  empty buckets and incomplete periods. Only selected/adjacent chart pages are
+  prepared even with decades of sparse history.
+- Reading-time axes follow the calendar: Week shows narrow weekday names,
+  Month marks locale week starts (April 2026 is 5/12/19/26 for Sunday-first
+  locales), Year marks every two months, and All starts at the earliest month
+  with three-month intervals, thinned for long histories. Dashed vertical grid
+  lines align with tick dates; bars and tap targets share the date scale,
+  including leap February and unequal month lengths. Bars have flat baselines.
+  Verify the average line, 0/top-hour labels, complete rounded comparison with
+  clearly distinguishable up/down arrows, and Characters Read / Reading Speed
+  rows in English, Chinese, narrow layouts and enlarged fonts. Long comparisons may move below the value,
+  but must not truncate. E-ink retains hollow unselected and filled selected bars.
+  The unselected headline explicitly labels Week/Month as Daily Average and
+  Year/All as Monthly Average in both languages. Selecting a bar shows that
+  day's or month's total without an average label; clearing restores the label.
+- The heatmap shows all history and initially scrolls to the latest dates.
+  Reading intensity grows with character counts across all history; today
+  has a subtle outline and the Less/More legend matches. Taps have no action. Changing chart mode,
+  page or bucket must not move or recolor the heatmap. Manual heatmap scrolling
+  and settings/editor round trips preserve its position.
+- Heatmap weekday labels remain complete and centered on their corresponding
+  rows in English and Chinese, including larger system fonts and E-ink mode.
+  Their text height must not be clipped to the smaller heatmap cell height;
+  labels and cells follow the same locale-specific first day of the week.
+- Fast vertical dashboard swipes retain the fixed cards rather than recreating
+  their charts on re-entry; use the Statistics flow in `docs/PERFORMANCE.md` for
+  frame and trace comparisons. Heatmap horizontal position, chart selection,
+  expanded book count and vertical position survive settings/editor round trips.
+- Reading-time bars, summary rows and book rows display together. Within
+  week/month a bar selects a day; within year/all it selects a month. The
+  full chart remains while the headline, summary and books follow that bucket.
+  Re-tapping the bar or the close button clears it; paging or changing mode
+  also clears it. Settings/editor round trips and refresh preserve selection.
+  Check empty buckets, the first partial month and future-bucket rejection.
+  Book bars rank by time independently of goal type, five rows show initially,
+  and each row shows grouped character counts and duration for the current
+  period or selected bucket above its time bar. Check local and archived books,
+  English/Chinese, large counts and larger fonts: metadata wraps when needed
+  without clipping or squeezing the bar, and the whole row still opens the editor.
+  Show More is left-aligned with the card content, has the same inset divider
+  above it as the book rows, and expands the list. Once all books are visible,
+  both the button and its divider disappear.
+  No Books section appears for an empty result.
+- In light and dark E-ink modes, unselected reading-time bars are hollow and
+  only the selected bar is filled. Initial display and clearing selection leave
+  all bars hollow. Check switching between bars, short/narrow bars, and normal
+  color mode retaining its existing color-based selection.
+  Period and goal-type selectors have outlined tracks; the selected segment
+  has a solid fill with inverse text in both light and dark E-ink.
+- Compare average duration and prior-period percentages with missing reading
+  days/months, including prior average zero. Goal history spans active and
+  archived books regardless of selected period, recalculates after goal changes,
+  and picks the earliest equal longest streak or best day.
+- Exercise the daily-goal semicircle and its compact history metrics with both
+  goal types, zero/partial/over-goal values, Chinese narrow screens, large values,
+  the day-edit keyboard and E-ink contrast. Check that all section headings share
+  the same style and inset, that compact chart/summary/book rows stay legible,
+  and that history metric values and their detail rows align across both columns.
+  Archive JPEG decoding/scaling needs a device check in addition
+  to generated-file JVM tests.
 
 ## Dictionary, Audio, And Anki
 

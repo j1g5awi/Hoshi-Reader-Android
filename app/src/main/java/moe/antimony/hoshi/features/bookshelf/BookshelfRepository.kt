@@ -155,6 +155,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
         val parsedBook = bookParser.parse(root)
         saveMetadata(root, parsedBook, bookRepository.loadMetadata(root))
         saveBookInfo(root, parsedBook)
+        bookRepository.restoreArchivedStatistics(root.name)
         prewarmBookCover(root)
         readerBookId(root)
     }
@@ -182,6 +183,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
             }
             val imported = ttuBookDataConverter.importBookData(tempRoot)
             importRemoteSidecars(imported, entry, syncStats, syncAudioBook)
+            bookRepository.restoreArchivedStatistics(imported.root.name)
             prewarmBookCover(imported.root)
             readerBookId(imported.root)
         } finally {

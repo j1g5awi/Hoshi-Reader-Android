@@ -6,6 +6,161 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ## [Unreleased]
 
+### Added
+
+- Preserve deleted books' reading statistics in an archive, restore them on
+  reimport, and edit daily records from book distribution rows. Single-day
+  deletion is available inside the day editor; deleting all records requires
+  confirmation. Daily records use compact grouped rows with dates and character
+  counts on the left, durations and navigation arrows on the right. Archived
+  books have a small trash marker in the book list. Local and archived book
+  headers use the dashboard title style, avoiding a font-size jump while loading.
+  E-ink mode outlines the daily-record group and its delete-all button.
+- Add natural calendar periods and all-time Statistics overview, with compact
+  period controls in the Reading Time card and the current week selected by default.
+  Tap chart bars to inspect a day within a week/month or a month within a
+  year/all-time period. Include elapsed-period averages and comparisons,
+  plus historical goal streaks and best-day summaries.
+- Support Anki tag handlebars such as `{document-title}` and `{expression}`,
+  joining whitespace inside substituted values with underscores; new card
+  formats default to the `hoshi` tag while saved tags stay unchanged.
+- Long-press a lookup result's audio button to choose among named local and
+  remote audio candidates; the selected recording is also used for Anki cards.
+- Show source text above Dictionary and externally shared lookup results; tap a
+  character to look up from that position while keeping the full sentence for
+  Anki cards. Back/Forward restores the selected occurrence for mining, and
+  source text size is adjustable from 12 to 48.
+- Add Off, Dimmed, Toggle, and Hidden furigana modes in Reader Appearance;
+  Toggle reveals whitespace-adjacent ruby annotations together on the first tap.
+
+- Add Show, Blur, and Hide privacy modes for bookshelf covers, plus deterministic
+  title and author artwork when a book has no visible cover.
+- Warn users before enabling AnkiConnect that most setups can create cards
+  directly through AnkiDroid and that an incorrect AnkiConnect configuration
+  prevents fetching decks and note types or creating cards.
+- Add term dictionary categories with category-aware Anki definition mappings
+  and iOS-aligned advanced category/fallback controls, Kanji dictionary
+  import/management and popup lookup, a verified one-tap
+  stroke-order font download for Kanji users, plus complete pitch data with H/L
+  patterns and nasal/devoice markers.
+- Add downloadable recommended Japanese font families to Reader Appearance,
+  including separate family and named variant selectors, real static and
+  variable weight selection, verified app-private downloads, and family/variant
+  grouping for imported TTF and OTF fonts, with compact one-level type grouping
+  in the font menu.
+- Add an optional Reader Behavior setting that uses the volume keys to jump
+  between terms in the topmost lookup popup.
+- Add `hoshi://search?text=...` deep links for opening lookup results in the
+  existing popup overlay, with `mode=app` support for opening the Dictionary
+  tab instead.
+
+### Changed
+
+- Keep Statistics always available and move its settings to the Stats tab's
+  upper-right corner. Statistics sync defaults on only when unset; saved daily goals,
+  sync opt-outs and Reader display preferences are preserved. Book Open and
+  Page Turn autostart remain independent and default off. Group settings into
+  autostart, reset time, Sync and Archive sections, with explanatory footers
+  and the archived-book count below the clear action.
+- Simplify Statistics to daily goals and reading-time results. Include a
+  display-only reading-intensity heatmap with fully visible, row-aligned weekday
+  labels in the daily card and a compact
+  goal popup with a scrollable value picker. Show reading-time
+  bars with calendar-aligned dashed grid lines, summary rows labeled Characters
+  Read and Reading Speed, and time-ranked books with per-book character counts
+  and reading times together instead of three tabs,
+  with consistent section headings, grouped cards and compact charts and rows.
+  Identify daily averages in Week/Month and monthly averages in Year/All.
+  Show complete period comparisons with larger text and direction arrows
+  alongside rounded percentages; keep Show More left-aligned with
+  a divider above it. In E-ink mode, chart bars are hollow until selected,
+  making the filled selection distinct; period and goal-type selectors use
+  outlined tracks with filled, inverse-text selections, and the goal value wheel
+  outlines its center selection. Remove the separate This Week
+  card and weekly goal; weekly totals and trends remain available through the
+  reading-time chart. Keep dashboard cards in memory while scrolling to avoid
+  rebuilding the heatmap and charts during fast vertical swipes.
+
+### Fixed
+
+- Count Korean text consistently in Reader progress, book search, and new
+  Sasayaki subtitle matches, and exclude ruby fallback text from native counts
+  and search. Existing books refresh their cached counts when reopened.
+- Ask for confirmation before resetting Dictionary custom CSS to prevent
+  accidental clearing.
+- Keep text and images reachable in every Reader mode when publisher CSS wraps
+  paragraphs or empty layout struts in oversized inline blocks.
+- Restore book files and covers from iOS Books backups when equivalent Unicode
+  paths use different composed forms.
+- Match Sasayaki subtitles immediately after selecting an SRT, including unique
+  cues immediately before the stable starting sequence, combined-volume EPUBs,
+  and large text gaps, without requiring Search Window tuning or a separate
+  Match action.
+- Import EPUB and TTU bookdata with multibyte titles that exceed Android's
+  filename byte limit while preserving the complete visible title and cleaning
+  temporary EPUB data after failed imports.
+- Keep wide inline gaiji at the publisher's text-relative size, recognize any
+  publisher class containing `gaiji`, and render gaiji plus transparent
+  monochrome images embedded in text with the active Reader text color while
+  blending away their image backgrounds in standard and custom themes and
+  excluding gaiji from image navigation.
+- Use EPUB fallback text for failed inline gaiji images, while retaining a
+  broken-image marker and its inline space when no fallback text is available.
+- Open EPUB pages that use paired XHTML viewport metadata instead of remaining
+  on the Reader loading screen.
+- Keep oversized lookup popup frames fully inside the visible screen so their
+  bottom border and all scrollable content remain reachable.
+- Keep the Dictionary type selector's `Frequency` label on one line on compact
+  screens.
+- Prefer Arial throughout lookup popups before Android's Japanese font fallback
+  so pitch-accent markers stay aligned with their reading, and keep pitch
+  dictionary labels intact when compact entries wrap.
+
+## [v1.3.3] - 2026-08-13
+
+### Added
+
+- Automatically center the current chapter when opening the Reader Contents or
+  Sasayaki chapter list.
+- Add per-source enable controls for imported local audio databases while
+  preserving each source's configured priority.
+- Add Ogg Opus audiobook import with embedded title, artist, cover, and chapter
+  metadata in Sasayaki, load its artist without the platform-reader delay, and
+  show MP3, M4B, and Opus audiobook duration before playback starts.
+- Add a Reader Appearance swipe-threshold control for paginated and VN modes;
+  setting it to zero disables swipe page turns while preserving hardware page
+  keys.
+- Add up to three named Anki card formats with independent icons, decks, note
+  types, field mappings, tags, and duplicate states.
+- Add confirmation before deleting Anki formats and an edit-screen action that
+  duplicates a format and returns to the format list.
+- Add Anki duplicate-note search buttons that appear only for matching notes,
+  plus grouped per-format mining and search actions placed before audio.
+- Add precise cloze-part handlebars, numeric pitch accent graph handlebars, and
+  advanced glossary mapping options for Anki cards.
+
+### Changed
+
+- Increase the default lookup popup size to 500 × 500 dp and allow its
+  height to be adjusted up to 1000 dp.
+- Align the built-in Lapis, Kiku, and Senren field presets with iOS by no longer
+  setting sentence-card marker fields.
+
+### Fixed
+
+- Allow importing supported files whose display names contain `#` or `?`,
+  including EPUB volume numbers such as `Book #01.epub`.
+- Base reduced-motion popup scrolling on the portion of the popup that is
+  actually visible when its configured height exceeds the screen.
+- Show Reader Contents, fragment jumps, and chapter labels for EPUBs whose
+  navigation document is stored in a subdirectory.
+- Prevent staggered multi-touch taps in paginated and VN Reader modes from
+  being mistaken for a page-turn swipe.
+- Keep Google Drive sync and TTU backup restore compatible with progress files
+  whose book data IDs exceed Android's 32-bit integer range.
+- Keep dictionary lookup available when tapping Sasayaki-highlighted text in VN
+  Reader mode.
+
 ## [v1.3.2] - 2026-08-04
 
 ### Added

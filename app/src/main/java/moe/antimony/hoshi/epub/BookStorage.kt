@@ -33,15 +33,14 @@ data class BookInfo(
 @Serializable
 data class BookMetadata(
     val id: String,
-    val title: String?,
-    val cover: String?,
-    val folder: String?,
+    val title: String? = null,
+    val cover: String? = null,
+    val folder: String? = null,
     val lastAccess: Double,
     val renamedTitle: String? = null,
     val epub: String? = null,
     val profileId: String? = null,
     val bookLanguage: String? = null,
-    val deleted: Boolean = false,
 ) {
     val displayTitle: String
         get() = renamedTitle?.takeIf { it.isNotBlank() } ?: title.orEmpty()

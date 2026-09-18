@@ -1,6 +1,12 @@
 package moe.antimony.hoshi.features.reader
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -10,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -20,6 +27,51 @@ import moe.antimony.hoshi.testing.CountingCoroutineDispatcher
 class ReaderSettingsRepositoryTest {
     @get:Rule
     val tempFolder = TemporaryFolder()
+
+    @Test
+    fun statisticsSyncDefaultsOnWithoutStartingTrackingOrChangingDisplayPreferences() = runBlocking {
+        repository().use { repository ->
+            val settings = repository.settings.first()
+            assertTrue(settings.statisticsSyncEnabled)
+            assertFalse(settings.statisticsAutostartOnBookOpen)
+            assertFalse(settings.statisticsAutostartOnPageTurn)
+            assertFalse(settings.showStatisticsToggle)
+            assertFalse(settings.showReadingSpeed)
+            assertFalse(settings.showReadingTime)
+        }
+    }
+
+    @Test
+    fun obsoleteDisabledStatisticsPreferencesDoNotChangeOtherPreferences() = runBlocking {
+        repository().use { repository ->
+            repository.editPreferences {
+                this[booleanPreferencesKey("readerSettingsMigratedFromSharedPreferences")] = true
+                this[booleanPreferencesKey("enableStatistics")] = false
+                this[booleanPreferencesKey("showStatisticsTab")] = false
+                this[booleanPreferencesKey("statisticsEnableSync")] = false
+                this[booleanPreferencesKey("readerShowReadingSpeed")] = true
+            }
+            val before = repository.settings.first()
+            assertFalse(before.statisticsSyncEnabled)
+            assertTrue(before.showReadingSpeed)
+            assertFalse(before.showReadingTime)
+            repository.update { it.copy(statisticsResetMinutes = 270) }
+            val after = repository.settings.first()
+            assertEquals(270, after.statisticsResetMinutes)
+            assertFalse(after.statisticsSyncEnabled)
+            assertTrue(after.showReadingSpeed)
+            assertFalse(after.showReadingTime)
+        }
+    }
+
+    @Test
+    fun storedStatisticsSyncOptOutSurvivesUnrelatedSettingsUpdates() = runBlocking {
+        repository().use { repository ->
+            repository.update { it.copy(statisticsSyncEnabled = false) }
+            repository.update { it.copy(fontSize = 28) }
+            assertFalse(repository.settings.first().statisticsSyncEnabled)
+        }
+    }
 
     @Test
     fun profileAppearanceReadsAndWritesUseInjectedIoDispatcher() = runBlocking {
@@ -57,8 +109,11 @@ class ReaderSettingsRepositoryTest {
             assertEquals(0xFF999999L, settings.customInfoColor)
             assertTrue(settings.verticalWriting)
             assertEquals(ReaderFontManager.defaultMinchoFont, settings.selectedFont)
+            assertEquals(null, settings.selectedFontFamilyId)
+            assertEquals(null, settings.selectedFontVariantId)
+            assertTrue(settings.fontVariantSelections.isEmpty())
             assertEquals(22, settings.fontSize)
-            assertFalse(settings.hideFurigana)
+            assertEquals(FuriganaMode.Off, settings.furiganaMode)
             assertEquals(ReaderViewMode.Paginated, settings.viewMode)
             assertFalse(settings.continuousMode)
             assertEquals(45, settings.visualNovelRevealSpeed)
@@ -68,14 +123,14 @@ class ReaderSettingsRepositoryTest {
             assertFalse(settings.visualNovelClickAdvance)
             assertFalse(settings.visualNovelMergeCrossScreenSasayakiCues)
             assertFalse(settings.blurImages)
-            assertFalse(settings.enableStatistics)
-            assertTrue(settings.showStatisticsTab)
-            assertEquals(StatisticsAutostartMode.Off, settings.statisticsAutostartMode)
+            assertFalse(settings.statisticsAutostartOnBookOpen)
+            assertFalse(settings.statisticsAutostartOnPageTurn)
             assertEquals(0, settings.statisticsResetMinutes)
             assertFalse(settings.showStatisticsToggle)
             assertFalse(settings.showReadingSpeed)
             assertFalse(settings.showReadingTime)
             assertEquals(20, settings.chapterSwipeDistance)
+            assertEquals(72, settings.pageSwipeThresholdPx)
             assertEquals(5, settings.horizontalPadding)
             assertEquals(0, settings.verticalPadding)
             assertEquals(30, settings.topSafeAreaDp)
@@ -94,19 +149,94 @@ class ReaderSettingsRepositoryTest {
             assertTrue(settings.alwaysShowProgress)
             assertTrue(settings.showProgressTop)
             assertTrue(settings.showReaderBackButton)
-            assertEquals(320, settings.popupWidth)
-            assertEquals(250, settings.popupHeight)
+            assertEquals(500, settings.popupWidth)
+            assertEquals(500, settings.popupHeight)
             assertEquals(1.0, settings.popupScale, 0.000001)
             assertFalse(settings.popupActionBar)
             assertFalse(settings.popupFullWidth)
             assertTrue(settings.popupSwipeToDismiss)
             assertEquals(30, settings.popupSwipeThreshold)
             assertFalse(settings.volumeKeysTurnPages)
+            assertFalse(settings.volumeKeysNavigatePopupTerms)
             assertFalse(settings.volumeKeysSeekSasayaki)
             assertFalse(settings.reverseVolumeKeyDirection)
             assertFalse(settings.keepScreenOnWhileReading)
             assertFalse(settings.lockCurrentOrientation)
             assertFalse(settings.openLastReadBookOnLaunch)
+        }
+    }
+
+    @Test
+    fun legacyDataStoreAutostartModesMigrateWithoutChangingBehavior() = runBlocking {
+        val cases = listOf(
+            null to (false to false),
+            "Off" to (false to false),
+            "On" to (true to false),
+            "Page Turn" to (false to true),
+            "Unexpected" to (false to false),
+        )
+
+        cases.forEachIndexed { index, (rawValue, expected) ->
+            repository(fileName = "reader-settings-$index.preferences_pb").use { repository ->
+                repository.editPreferences {
+                    this[booleanPreferencesKey("readerSettingsMigratedFromSharedPreferences")] = true
+                    rawValue?.let { this[stringPreferencesKey("statisticsAutostartMode")] = it }
+                }
+
+                val migrated = repository.settings.first()
+                val stored = repository.preferences()
+
+                assertEquals(expected.first, migrated.statisticsAutostartOnBookOpen)
+                assertEquals(expected.second, migrated.statisticsAutostartOnPageTurn)
+                assertEquals(expected.first, stored[booleanPreferencesKey("statisticsAutostartOnBookOpen")])
+                assertEquals(expected.second, stored[booleanPreferencesKey("statisticsAutostartOnPageTurn")])
+                assertNull(stored[stringPreferencesKey("statisticsAutostartMode")])
+            }
+        }
+    }
+
+    @Test
+    fun existingAutostartTriggerWinsWhileMissingTriggerMigratesFromLegacyMode() = runBlocking {
+        repository().use { repository ->
+            repository.editPreferences {
+                this[booleanPreferencesKey("readerSettingsMigratedFromSharedPreferences")] = true
+                this[stringPreferencesKey("statisticsAutostartMode")] = "Page Turn"
+                this[booleanPreferencesKey("statisticsAutostartOnBookOpen")] = true
+            }
+
+            val migrated = repository.settings.first()
+            val stored = repository.preferences()
+
+            assertTrue(migrated.statisticsAutostartOnBookOpen)
+            assertTrue(migrated.statisticsAutostartOnPageTurn)
+            assertEquals(true, stored[booleanPreferencesKey("statisticsAutostartOnBookOpen")])
+            assertEquals(true, stored[booleanPreferencesKey("statisticsAutostartOnPageTurn")])
+            assertNull(stored[stringPreferencesKey("statisticsAutostartMode")])
+        }
+    }
+
+    @Test
+    fun persistsEveryStatisticsAutostartTriggerCombination() = runBlocking {
+        repository().use { repository ->
+            val combinations = listOf(
+                false to false,
+                true to false,
+                false to true,
+                true to true,
+            )
+
+            combinations.forEach { (onBookOpen, onPageTurn) ->
+                repository.update {
+                    it.copy(
+                        statisticsAutostartOnBookOpen = onBookOpen,
+                        statisticsAutostartOnPageTurn = onPageTurn,
+                    )
+                }
+
+                val saved = repository.settings.first()
+                assertEquals(onBookOpen, saved.statisticsAutostartOnBookOpen)
+                assertEquals(onPageTurn, saved.statisticsAutostartOnPageTurn)
+            }
         }
     }
 
@@ -124,12 +254,14 @@ class ReaderSettingsRepositoryTest {
                 fontSize = 29,
                 viewMode = ReaderViewMode.Continuous,
                 chapterSwipeDistance = 120,
+                pageSwipeThresholdPx = 500,
                 topSafeAreaDp = 100,
                 bottomSafeAreaDp = 100,
                 lineHeight = 1.9,
                 paragraphSpacing = 2.2,
                 popupSwipeThreshold = 120,
                 volumeKeysTurnPages = true,
+                volumeKeysNavigatePopupTerms = true,
                 volumeKeysSeekSasayaki = true,
                 keepScreenOnWhileReading = true,
                 lockCurrentOrientation = true,
@@ -151,12 +283,14 @@ class ReaderSettingsRepositoryTest {
             assertEquals(ReaderViewMode.Continuous, migrated.viewMode)
             assertTrue(migrated.continuousMode)
             assertEquals(60, migrated.chapterSwipeDistance)
+            assertEquals(360, migrated.pageSwipeThresholdPx)
             assertEquals(72, migrated.topSafeAreaDp)
             assertEquals(72, migrated.bottomSafeAreaDp)
             assertEquals(1.9, migrated.lineHeight, 0.000001)
             assertEquals(2.2, migrated.paragraphSpacing, 0.000001)
             assertEquals(60, migrated.popupSwipeThreshold)
             assertTrue(migrated.volumeKeysTurnPages)
+            assertTrue(migrated.volumeKeysNavigatePopupTerms)
             assertTrue(migrated.volumeKeysSeekSasayaki)
             assertTrue(migrated.keepScreenOnWhileReading)
             assertTrue(migrated.lockCurrentOrientation)
@@ -182,8 +316,14 @@ class ReaderSettingsRepositoryTest {
                     customInfoColor = 0xFF708090,
                     verticalWriting = false,
                     selectedFont = ReaderFontManager.defaultGothicFont,
+                    selectedFontFamilyId = ReaderFontManager.systemGothicFamilyId,
+                    selectedFontVariantId = "wght-600-normal",
+                    fontVariantSelections = mapOf(
+                        ReaderFontManager.systemGothicFamilyId to "wght-600-normal",
+                        "recommended:kleeone" to "wght-400-normal",
+                    ),
                     fontSize = 24,
-                    hideFurigana = true,
+                    furiganaMode = FuriganaMode.Hidden,
                     viewMode = ReaderViewMode.VisualNovel,
                     visualNovelRevealSpeed = 80,
                     visualNovelScreenMode = VisualNovelScreenMode.Sentences,
@@ -192,13 +332,13 @@ class ReaderSettingsRepositoryTest {
                     visualNovelClickAdvance = false,
                     visualNovelMergeCrossScreenSasayakiCues = true,
                     blurImages = true,
-                    enableStatistics = true,
-                    showStatisticsTab = false,
-                    statisticsAutostartMode = StatisticsAutostartMode.PageTurn,
+                    statisticsAutostartOnBookOpen = true,
+                    statisticsAutostartOnPageTurn = true,
                     showStatisticsToggle = true,
                     showReadingSpeed = true,
                     showReadingTime = true,
                     chapterSwipeDistance = 35,
+                    pageSwipeThresholdPx = 108,
                     horizontalPadding = 12,
                     verticalPadding = 6,
                     topSafeAreaDp = 40,
@@ -225,6 +365,7 @@ class ReaderSettingsRepositoryTest {
                     popupSwipeToDismiss = false,
                     popupSwipeThreshold = 35,
                     volumeKeysTurnPages = true,
+                    volumeKeysNavigatePopupTerms = true,
                     volumeKeysSeekSasayaki = true,
                     reverseVolumeKeyDirection = true,
                     keepScreenOnWhileReading = true,
@@ -244,8 +385,11 @@ class ReaderSettingsRepositoryTest {
             assertEquals(0xFF708090, saved.customInfoColor)
             assertFalse(saved.verticalWriting)
             assertEquals(ReaderFontManager.defaultGothicFont, saved.selectedFont)
+            assertEquals(ReaderFontManager.systemGothicFamilyId, saved.selectedFontFamilyId)
+            assertEquals("wght-600-normal", saved.selectedFontVariantId)
+            assertEquals("wght-400-normal", saved.fontVariantSelections["recommended:kleeone"])
             assertEquals(24, saved.fontSize)
-            assertTrue(saved.hideFurigana)
+            assertEquals(FuriganaMode.Hidden, saved.furiganaMode)
             assertEquals(ReaderViewMode.VisualNovel, saved.viewMode)
             assertFalse(saved.continuousMode)
             assertEquals(80, saved.visualNovelRevealSpeed)
@@ -255,13 +399,13 @@ class ReaderSettingsRepositoryTest {
             assertFalse(saved.visualNovelClickAdvance)
             assertTrue(saved.visualNovelMergeCrossScreenSasayakiCues)
             assertTrue(saved.blurImages)
-            assertTrue(saved.enableStatistics)
-            assertFalse(saved.showStatisticsTab)
-            assertEquals(StatisticsAutostartMode.PageTurn, saved.statisticsAutostartMode)
+            assertTrue(saved.statisticsAutostartOnBookOpen)
+            assertTrue(saved.statisticsAutostartOnPageTurn)
             assertTrue(saved.showStatisticsToggle)
             assertTrue(saved.showReadingSpeed)
             assertTrue(saved.showReadingTime)
             assertEquals(35, saved.chapterSwipeDistance)
+            assertEquals(108, saved.pageSwipeThresholdPx)
             assertEquals(12, saved.horizontalPadding)
             assertEquals(6, saved.verticalPadding)
             assertEquals(40, saved.topSafeAreaDp)
@@ -288,6 +432,7 @@ class ReaderSettingsRepositoryTest {
             assertFalse(saved.popupSwipeToDismiss)
             assertEquals(35, saved.popupSwipeThreshold)
             assertTrue(saved.volumeKeysTurnPages)
+            assertTrue(saved.volumeKeysNavigatePopupTerms)
             assertTrue(saved.volumeKeysSeekSasayaki)
             assertTrue(saved.reverseVolumeKeyDirection)
             assertTrue(saved.keepScreenOnWhileReading)
@@ -317,27 +462,6 @@ class ReaderSettingsRepositoryTest {
     }
 
     @Test
-    fun falseToTrueStatisticsRepositoryUpdateEnablesDisplayControls() = runBlocking {
-        repository().use { repository ->
-            repository.update {
-                it.copy(
-                    enableStatistics = true,
-                    showStatisticsToggle = false,
-                    showReadingSpeed = false,
-                    showReadingTime = false,
-                )
-            }
-
-            val saved = repository.settings.first()
-
-            assertTrue(saved.enableStatistics)
-            assertTrue(saved.showStatisticsToggle)
-            assertTrue(saved.showReadingSpeed)
-            assertTrue(saved.showReadingTime)
-        }
-    }
-
-    @Test
     fun profileModeScopesAppearanceFieldsButKeepsBehaviorFieldsGlobal() = runBlocking {
         val profileRepository = ProfileRepository(tempFolder.newFolder("files"))
         repository(profileRepository = profileRepository).use { repository ->
@@ -345,12 +469,14 @@ class ReaderSettingsRepositoryTest {
                 it.copy(
                     theme = ReaderTheme.Dark,
                     fontSize = 30,
+                    furiganaMode = FuriganaMode.Toggle,
                     popupWidth = 440,
+                    pageSwipeThresholdPx = 96,
                     topSafeAreaDp = 46,
                     bottomSafeAreaDp = 44,
                     visualNovelMergeCrossScreenSasayakiCues = true,
-                    showStatisticsTab = false,
                     volumeKeysTurnPages = true,
+                    volumeKeysNavigatePopupTerms = true,
                     lockCurrentOrientation = true,
                     openLastReadBookOnLaunch = true,
                 )
@@ -361,12 +487,14 @@ class ReaderSettingsRepositoryTest {
             val inherited = repository.settings.first()
             assertEquals(ReaderTheme.Dark, inherited.theme)
             assertEquals(30, inherited.fontSize)
+            assertEquals(FuriganaMode.Toggle, inherited.furiganaMode)
             assertEquals(440, inherited.popupWidth)
+            assertEquals(96, inherited.pageSwipeThresholdPx)
             assertEquals(46, inherited.topSafeAreaDp)
             assertEquals(44, inherited.bottomSafeAreaDp)
             assertTrue(inherited.visualNovelMergeCrossScreenSasayakiCues)
-            assertFalse(inherited.showStatisticsTab)
             assertTrue(inherited.volumeKeysTurnPages)
+            assertTrue(inherited.volumeKeysNavigatePopupTerms)
             assertTrue(inherited.lockCurrentOrientation)
             assertTrue(inherited.openLastReadBookOnLaunch)
 
@@ -374,12 +502,14 @@ class ReaderSettingsRepositoryTest {
                 it.copy(
                     theme = ReaderTheme.Light,
                     fontSize = 18,
+                    furiganaMode = FuriganaMode.Dimmed,
                     popupWidth = 280,
+                    pageSwipeThresholdPx = 120,
                     topSafeAreaDp = 58,
                     bottomSafeAreaDp = 60,
                     visualNovelMergeCrossScreenSasayakiCues = false,
-                    showStatisticsTab = true,
                     volumeKeysTurnPages = false,
+                    volumeKeysNavigatePopupTerms = false,
                     lockCurrentOrientation = false,
                     openLastReadBookOnLaunch = false,
                 )
@@ -389,14 +519,52 @@ class ReaderSettingsRepositoryTest {
             val japanese = repository.settings.first()
             assertEquals(ReaderTheme.Dark, japanese.theme)
             assertEquals(30, japanese.fontSize)
+            assertEquals(FuriganaMode.Toggle, japanese.furiganaMode)
             assertEquals(440, japanese.popupWidth)
+            assertEquals(96, japanese.pageSwipeThresholdPx)
             assertEquals(46, japanese.topSafeAreaDp)
             assertEquals(44, japanese.bottomSafeAreaDp)
             assertTrue(japanese.visualNovelMergeCrossScreenSasayakiCues)
-            assertTrue(japanese.showStatisticsTab)
             assertFalse(japanese.volumeKeysTurnPages)
+            assertFalse(japanese.volumeKeysNavigatePopupTerms)
             assertFalse(japanese.lockCurrentOrientation)
             assertFalse(japanese.openLastReadBookOnLaunch)
+        }
+    }
+
+    @Test
+    fun legacyFuriganaMigratesAndExplicitModeWins() = runBlocking {
+        repository().use { repository ->
+            repository.editPreferences {
+                this[booleanPreferencesKey("readerSettingsMigratedFromSharedPreferences")] = true
+                this[booleanPreferencesKey("readerHideFurigana")] = true
+            }
+            assertEquals(FuriganaMode.Hidden, repository.settings.first().furiganaMode)
+            repository.update { it.copy(furiganaMode = FuriganaMode.Toggle) }
+            assertEquals(FuriganaMode.Toggle, repository.settings.first().furiganaMode)
+            repository.editPreferences {
+                this[booleanPreferencesKey("readerHideFurigana")] = true
+            }
+            assertEquals(FuriganaMode.Toggle, repository.settings.first().furiganaMode)
+            for (mode in FuriganaMode.entries) {
+                repository.update { it.copy(furiganaMode = mode) }
+                assertEquals(mode, repository.settings.first().furiganaMode)
+            }
+        }
+    }
+
+    @Test
+    fun legacyProfileFuriganaMigratesAndPersistsNewMode() = runBlocking {
+        val profiles = ProfileRepository(tempFolder.newFolder("furigana-profiles"))
+        val file = profiles.readerSettingsFile()
+        file.parentFile?.mkdirs()
+        file.writeText("""{"hideFurigana":true}""")
+        repository(profileRepository = profiles).use { repository ->
+            assertEquals(FuriganaMode.Hidden, repository.settings.first().furiganaMode)
+            repository.update { it.copy(furiganaMode = FuriganaMode.Dimmed) }
+        }
+        repository(profileRepository = profiles, fileName = "furigana-reopened.preferences_pb").use { repository ->
+            assertEquals(FuriganaMode.Dimmed, repository.settings.first().furiganaMode)
         }
     }
 
@@ -404,11 +572,12 @@ class ReaderSettingsRepositoryTest {
         legacySource: ReaderSettingsLegacySource? = null,
         profileRepository: ProfileRepository? = null,
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
+        fileName: String = "reader-settings.preferences_pb",
     ): RepositoryHandle {
         val scope = CoroutineScope(Dispatchers.IO + Job())
         val dataStore = PreferenceDataStoreFactory.create(
             scope = scope,
-            produceFile = { tempFolder.newFile("reader-settings.preferences_pb") },
+            produceFile = { tempFolder.newFile(fileName) },
         )
         return RepositoryHandle(
             repository = ReaderSettingsRepository(
@@ -417,12 +586,14 @@ class ReaderSettingsRepositoryTest {
                 profileRepository = profileRepository,
                 ioDispatcher = ioDispatcher,
             ),
+            dataStore = dataStore,
             scope = scope,
         )
     }
 
     private class RepositoryHandle(
         private val repository: ReaderSettingsRepository,
+        private val dataStore: DataStore<Preferences>,
         private val scope: CoroutineScope,
     ) : AutoCloseable {
         val settings: Flow<ReaderSettings>
@@ -431,6 +602,12 @@ class ReaderSettingsRepositoryTest {
         suspend fun update(transform: (ReaderSettings) -> ReaderSettings) {
             repository.update(transform)
         }
+
+        suspend fun editPreferences(transform: suspend MutablePreferences.() -> Unit) {
+            dataStore.edit { preferences -> preferences.transform() }
+        }
+
+        suspend fun preferences(): Preferences = dataStore.data.first()
 
         override fun close() {
             scope.cancel()

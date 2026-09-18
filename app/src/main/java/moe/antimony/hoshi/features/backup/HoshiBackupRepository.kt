@@ -7,12 +7,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -27,8 +30,12 @@ import moe.antimony.hoshi.di.FilesDir
 import moe.antimony.hoshi.di.IoDispatcher
 import moe.antimony.hoshi.epub.BookRepository
 import moe.antimony.hoshi.epub.Bookmark
+import moe.antimony.hoshi.epub.STATISTICS_ARCHIVE_DIRECTORY
+import moe.antimony.hoshi.epub.fitBookStorageName
 import moe.antimony.hoshi.epub.ReadingStatistics
 import moe.antimony.hoshi.epub.EpubBookParser
+import moe.antimony.hoshi.epub.MAX_PATH_COMPONENT_UTF8_BYTES
+import moe.antimony.hoshi.epub.fitUtf8PathComponent
 import moe.antimony.hoshi.features.sync.TtuBookDataConverter
 import moe.antimony.hoshi.features.sync.TtuProgress
 import moe.antimony.hoshi.features.sync.TtuSyncRules
@@ -168,7 +175,7 @@ class HoshiBackupRepository @Inject constructor(
             tempRoot.mkdirs()
             try {
                 archiveFile.outputStream().use { output -> input.copyTo(output) }
-                unzipInto(archiveFile, tempRoot)
+                unzipInto(archiveFile, tempRoot, ::remapTtuRestoreEntryName)
                 var restoredCount = 0
                 tempRoot.listFiles().orEmpty().filter(File::isDirectory).forEach { folder ->
                     val files = folder.listFiles().orEmpty()
@@ -194,6 +201,7 @@ class HoshiBackupRepository @Inject constructor(
                             ),
                         )
                     }
+                    bookRepository.restoreArchivedStatistics(entry.root.name)
                 }
                 restoredCount
             } finally {
@@ -274,7 +282,8 @@ class HoshiBackupRepository @Inject constructor(
             check(tempRoot.mkdirs()) { "Unable to create restore directory." }
             try {
                 archiveFile.outputStream().use { output -> input.copyTo(output) }
-                unzipInto(archiveFile, tempRoot)
+                unzipInto(archiveFile, tempRoot, ::remapBooksRestoreEntryName)
+                reconcileRestoredBookMetadata(tempRoot)
                 replaceDestinationWithRestoredFolder(target, tempRoot, destination)
             } catch (error: Throwable) {
                 tempRoot.deleteRecursively()
@@ -282,6 +291,66 @@ class HoshiBackupRepository @Inject constructor(
             } finally {
                 archiveFile.delete()
             }
+        }
+    }
+
+    private fun reconcileRestoredBookMetadata(restoredBooksRoot: File) {
+        val archive = restoredBooksRoot.resolve(STATISTICS_ARCHIVE_DIRECTORY)
+        val archivedRoots = archive.listFiles().orEmpty().filter(File::isDirectory)
+        archivedRoots.forEach { root ->
+            reconcileRestoredBookMetadataFile(root, archivedRoots.map(File::getName), archived = true)
+        }
+        val bookRoots = restoredBooksRoot.listFiles().orEmpty()
+            .filter { it.isDirectory && it.name != STATISTICS_ARCHIVE_DIRECTORY }
+        val actualFolderNames = bookRoots.map(File::getName)
+        bookRoots.forEach { bookRoot ->
+            reconcileRestoredBookMetadataFile(bookRoot, actualFolderNames)
+        }
+    }
+
+    private fun reconcileRestoredBookMetadataFile(
+        bookRoot: File,
+        actualFolderNames: List<String>,
+        archived: Boolean = false,
+    ) {
+        val metadataFile = bookRoot.resolve("metadata.json").takeIf(File::isFile) ?: return
+        val rawMetadata = metadataFile.readText()
+        val metadata = runCatching {
+            backupJson.parseToJsonElement(rawMetadata) as? JsonObject
+        }.getOrNull() ?: return
+        val actualFileNames = bookRoot.listFiles().orEmpty()
+            .filter(File::isFile)
+            .map(File::getName)
+        val updated = metadata.toMutableMap()
+
+        val recordedFolderName = metadata.stringValue("folder")
+        val resolvedFolderName = recordedFolderName?.let {
+            resolveRestoredPathComponent(it, actualFolderNames)
+                ?: resolveRestoredPathComponent(it.fitBookStorageName(), actualFolderNames)
+        }
+        if (resolvedFolderName == bookRoot.name && recordedFolderName != bookRoot.name) {
+            updated["folder"] = JsonPrimitive(bookRoot.name)
+        }
+
+        metadata.stringValue("epub")
+            ?.let { resolveRestoredPathComponent(it, actualFileNames)
+                ?: resolveRestoredPathComponent(it.fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES), actualFileNames) }
+            ?.takeIf { it != metadata.stringValue("epub") }
+            ?.let { updated["epub"] = JsonPrimitive(it) }
+
+        metadata.stringValue("cover")
+            ?.let { recorded ->
+                val prefix = "Books/$STATISTICS_ARCHIVE_DIRECTORY/"
+                val regularPath = if (archived && recorded.startsWith(prefix)) "Books/" + recorded.removePrefix(prefix) else recorded
+                resolveRestoredCoverPath(regularPath, bookRoot.name, actualFolderNames, actualFileNames)
+                    ?.let { if (archived) it.replaceFirst("Books/", prefix) else it }
+            }
+            ?.takeIf { it != metadata.stringValue("cover") }
+            ?.let { updated["cover"] = JsonPrimitive(it) }
+
+        val updatedMetadata = JsonObject(updated)
+        if (updatedMetadata != metadata) {
+            metadataFile.writeText(backupJson.encodeToString(JsonObject.serializer(), updatedMetadata))
         }
     }
 
@@ -373,13 +442,18 @@ class HoshiBackupRepository @Inject constructor(
         }.getOrThrow()
     }
 
-    private fun unzipInto(archiveFile: File, destinationRoot: File) {
+    private fun unzipInto(
+        archiveFile: File,
+        destinationRoot: File,
+        entryNameMapper: (String) -> String = { it },
+    ) {
         val destinationCanonical = destinationRoot.canonicalFile
         ZipFile(archiveFile).use { zip ->
             val entries = zip.entries()
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
-                val target = destinationCanonical.resolve(entry.name).canonicalFile
+                val entryName = entryNameMapper(entry.name)
+                val target = destinationCanonical.resolve(entryName).canonicalFile
                 require(target.path == destinationCanonical.path || target.path.startsWith(destinationCanonical.path + File.separator)) {
                     "Unsafe backup entry: ${entry.name}"
                 }
@@ -480,17 +554,70 @@ private fun uniqueTtuBackupFolderName(
     usedNames: MutableSet<String>,
 ): String {
     val normalizedBase = baseName.ifBlank { "Book" }
-    if (usedNames.add(normalizedBase)) return normalizedBase
+    val firstCandidate = normalizedBase.fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES)
+    if (usedNames.add(firstCandidate)) return firstCandidate
 
     val stableSuffix = bookId.take(8).ifBlank { UUID.randomUUID().toString().take(8) }
     val suffixBase = "$normalizedBase-$stableSuffix"
-    var candidate = suffixBase
+    var candidate = suffixBase.fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES)
     var index = 2
     while (!usedNames.add(candidate)) {
-        candidate = "$suffixBase-$index"
+        candidate = "$suffixBase-$index".fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES)
         index += 1
     }
     return candidate
+}
+
+internal fun resolveRestoredPathComponent(recordedName: String, actualNames: List<String>): String? {
+    if (!isSafePathComponent(recordedName)) return null
+    if (recordedName in actualNames) return recordedName
+    return actualNames
+        .filter { canonicallyEquals(it, recordedName) }
+        .singleOrNull()
+}
+
+private fun resolveRestoredCoverPath(
+    recordedPath: String,
+    actualFolderName: String,
+    actualFolderNames: List<String>,
+    actualFileNames: List<String>,
+): String? {
+    val segments = recordedPath.split('/')
+    if (segments.size != 3 || segments[0] != "Books") return null
+    val recordedFolderName = segments[1]
+    val resolvedFolderName = resolveRestoredPathComponent(recordedFolderName, actualFolderNames)
+        ?: resolveRestoredPathComponent(recordedFolderName.fitBookStorageName(), actualFolderNames)
+    if (resolvedFolderName != actualFolderName) return null
+    val actualFileName = resolveRestoredPathComponent(segments[2], actualFileNames)
+        ?: resolveRestoredPathComponent(segments[2].fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES), actualFileNames)
+        ?: return null
+    return "Books/$actualFolderName/$actualFileName"
+}
+
+private fun JsonObject.stringValue(key: String): String? {
+    val primitive = this[key] as? JsonPrimitive ?: return null
+    return primitive.content.takeIf { primitive.isString }
+}
+
+private fun isSafePathComponent(value: String): Boolean =
+    value.isNotEmpty() && value != "." && value != ".." && '/' !in value && '\\' !in value && '\u0000' !in value
+
+private fun canonicallyEquals(first: String, second: String): Boolean =
+    Normalizer.normalize(first, Normalizer.Form.NFC) == Normalizer.normalize(second, Normalizer.Form.NFC)
+
+internal fun remapTtuRestoreEntryName(entryName: String): String {
+    val isDirectory = entryName.endsWith('/')
+    val path = entryName.removeSuffix("/")
+    require(path.isNotEmpty() && !path.startsWith('/')) { "Unsafe TTU backup entry: $entryName" }
+    val segments = path.split('/')
+    require(segments.none { it.isEmpty() || it == "." || it == ".." || '\u0000' in it }) {
+        "Unsafe TTU backup entry: $entryName"
+    }
+    val mapped = buildList {
+        add(segments.first().fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES))
+        addAll(segments.drop(1))
+    }.joinToString(separator = "/")
+    return mapped + if (isDirectory) "/" else ""
 }
 
 private val backupJson = Json {
@@ -537,4 +664,18 @@ private fun createStandaloneTtuConverter(
 ): TtuBookDataConverter {
     val repository = BookRepository(filesDir)
     return TtuBookDataConverter(repository, EpubBookParser(), filesDir, ioDispatcher)
+}
+
+internal fun remapBooksRestoreEntryName(entryName: String): String {
+    val directory = entryName.endsWith('/')
+    val segments = entryName.removeSuffix("/").split('/')
+    require(segments.none { it.isEmpty() || it == "." || it == ".." || '\\' in it || '\u0000' in it }) { "Unsafe backup entry: $entryName" }
+    val bookIndex = if (segments.first() == STATISTICS_ARCHIVE_DIRECTORY) 1 else 0
+    return segments.mapIndexed { index, component ->
+        when {
+            index < bookIndex -> component
+            index == bookIndex && (segments.size > index + 1 || directory) -> component.fitBookStorageName()
+            else -> component.fitUtf8PathComponent(MAX_PATH_COMPONENT_UTF8_BYTES)
+        }
+    }.joinToString("/") + if (directory) "/" else ""
 }
