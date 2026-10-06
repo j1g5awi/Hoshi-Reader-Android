@@ -19,7 +19,7 @@ import moe.antimony.hoshi.di.IoDispatcher
 
 internal const val STATISTICS_ARCHIVE_DIRECTORY = "statistics_archive"
 
-private const val BOOKMARK_FILE_NAME = "bookmark.json"
+private val ARCHIVED_SIDECAR_FILE_NAMES = listOf("bookmark.json", "highlights.json", "bookinfo.json")
 
 internal data class StoredBookStatistics(
     val folder: String,
@@ -84,8 +84,10 @@ class BookStatisticsStore @Inject constructor(
 
     private fun archive(bookRoot: File) {
         val statistics = readStatistics(bookRoot).orEmpty().filter { it.hasActivity }
-        val bookmark = bookRoot.resolve(BOOKMARK_FILE_NAME).takeIf { it.isFile }
-        if (statistics.isEmpty() && bookmark == null) return
+        val sidecars = ARCHIVED_SIDECAR_FILE_NAMES.mapNotNull { name ->
+            bookRoot.resolve(name).takeIf { it.isFile }?.let { name to it }
+        }
+        if (statistics.isEmpty() && sidecars.isEmpty()) return
         val metadata = readMetadata(bookRoot)
         val destination = archiveRoot(bookRoot.name)
         val merged = (readStatistics(destination).orEmpty() + statistics).deduplicateReadingStatistics().filter { it.hasActivity }
@@ -99,7 +101,7 @@ class BookStatisticsStore @Inject constructor(
         )
         atomicWrite(destination.resolve("metadata.json"), json.encodeToString(BookMetadata.serializer(), archivedMetadata))
         writeStatistics(destination, merged)
-        bookmark?.let { atomicCopy(it, destination.resolve(BOOKMARK_FILE_NAME)) }
+        sidecars.forEach { (name, source) -> atomicCopy(source, destination.resolve(name)) }
     }
 
     /** Called only after an import has finished writing its external sidecars. */
@@ -109,15 +111,17 @@ class BookStatisticsStore @Inject constructor(
         if (!active.isDirectory || !archived.isDirectory) return@locked
         val merged = (readStatistics(active).orEmpty() + readStatistics(archived).orEmpty()).deduplicateReadingStatistics()
         writeStatistics(active, merged)
-        restoreBookmark(active, archived)
+        restoreSidecars(active, archived)
         removeArchive(archived)
     }
 
-    private fun restoreBookmark(active: File, archived: File) {
-        val source = archived.resolve(BOOKMARK_FILE_NAME).takeIf { it.isFile } ?: return
-        val destination = active.resolve(BOOKMARK_FILE_NAME)
-        if (destination.isFile) return
-        atomicCopy(source, destination)
+    private fun restoreSidecars(active: File, archived: File) {
+        ARCHIVED_SIDECAR_FILE_NAMES.forEach { name ->
+            val source = archived.resolve(name).takeIf { it.isFile } ?: return@forEach
+            val destination = active.resolve(name)
+            if (destination.isFile) return@forEach
+            atomicCopy(source, destination)
+        }
     }
 
     internal suspend fun loadSnapshot(): StoredStatisticsSnapshot = locked {
