@@ -8,8 +8,9 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ### Added
 
-- Preserve deleted books' reading statistics in an archive, restore them on
-  reimport, and edit daily records from book distribution rows. Single-day
+- Preserve deleted books' reading statistics and last reading position in an
+  archive, restore them on reimport, and edit daily records from book
+  distribution rows. Single-day
   deletion is available inside the day editor; deleting all records requires
   confirmation. Daily records use compact grouped rows with dates and character
   counts on the left, durations and navigation arrows on the right. Archived

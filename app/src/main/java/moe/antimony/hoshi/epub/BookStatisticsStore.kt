@@ -19,6 +19,8 @@ import moe.antimony.hoshi.di.IoDispatcher
 
 internal const val STATISTICS_ARCHIVE_DIRECTORY = "statistics_archive"
 
+private const val BOOKMARK_FILE_NAME = "bookmark.json"
+
 internal data class StoredBookStatistics(
     val folder: String,
     val metadata: BookMetadata,
@@ -82,7 +84,8 @@ class BookStatisticsStore @Inject constructor(
 
     private fun archive(bookRoot: File) {
         val statistics = readStatistics(bookRoot).orEmpty().filter { it.hasActivity }
-        if (statistics.isEmpty()) return
+        val bookmark = bookRoot.resolve(BOOKMARK_FILE_NAME).takeIf { it.isFile }
+        if (statistics.isEmpty() && bookmark == null) return
         val metadata = readMetadata(bookRoot)
         val destination = archiveRoot(bookRoot.name)
         val merged = (readStatistics(destination).orEmpty() + statistics).deduplicateReadingStatistics().filter { it.hasActivity }
@@ -96,6 +99,7 @@ class BookStatisticsStore @Inject constructor(
         )
         atomicWrite(destination.resolve("metadata.json"), json.encodeToString(BookMetadata.serializer(), archivedMetadata))
         writeStatistics(destination, merged)
+        bookmark?.let { atomicCopy(it, destination.resolve(BOOKMARK_FILE_NAME)) }
     }
 
     /** Called only after an import has finished writing its external sidecars. */
@@ -105,7 +109,15 @@ class BookStatisticsStore @Inject constructor(
         if (!active.isDirectory || !archived.isDirectory) return@locked
         val merged = (readStatistics(active).orEmpty() + readStatistics(archived).orEmpty()).deduplicateReadingStatistics()
         writeStatistics(active, merged)
+        restoreBookmark(active, archived)
         removeArchive(archived)
+    }
+
+    private fun restoreBookmark(active: File, archived: File) {
+        val source = archived.resolve(BOOKMARK_FILE_NAME).takeIf { it.isFile } ?: return
+        val destination = active.resolve(BOOKMARK_FILE_NAME)
+        if (destination.isFile) return
+        atomicCopy(source, destination)
     }
 
     internal suspend fun loadSnapshot(): StoredStatisticsSnapshot = locked {
@@ -212,6 +224,20 @@ class BookStatisticsStore @Inject constructor(
                 stream.fd.sync()
             }
             Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            temporary.delete()
+        }
+    }
+
+    private fun atomicCopy(source: File, destination: File) {
+        val parent = requireNotNull(destination.parentFile)
+        check(parent.isDirectory || parent.mkdirs()) { "Unable to create statistics directory." }
+        val temporary = File.createTempFile(".${destination.name}-", ".tmp", parent)
+        try {
+            source.inputStream().use { input ->
+                temporary.outputStream().use { output -> input.copyTo(output) }
+            }
+            Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally {
             temporary.delete()
         }
