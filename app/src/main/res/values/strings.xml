@@ -432,6 +432,14 @@
     <string name="sync_title">Syncing</string>
     <string name="sync_section_behaviour" comment="Sync settings group label, intentionally matching other settings group labels.">Behaviour</string>
     <string name="sync_section_data">Data</string>
+    <string name="sync_section_provider">Provider</string>
+    <string name="sync_provider">Sync Provider</string>
+    <string name="sync_provider_webdav">WebDAV</string>
+    <string name="sync_webdav_url">Server URL</string>
+    <string name="sync_webdav_username">Username</string>
+    <string name="sync_webdav_password">Password</string>
+    <string name="sync_webdav_description">Sync to any WebDAV server (Nextcloud, ownCloud, Synology, …). Books are stored under the given URL.</string>
+    <string name="sync_webdav_url_missing">Enter a WebDAV server URL to enable syncing.</string>
     <string name="sync_direction">Direction</string>
     <string name="sync_auto_sync">Auto Sync</string>
     <string name="sync_upload_books">Upload Books</string>

@@ -8,6 +8,9 @@ Historical release notes before v1.3.0 live in [CHANGELOG_ARCHIVE.md](CHANGELOG_
 
 ### Added
 
+- Add a WebDAV sync provider: choose WebDAV under the sync provider setting and
+  enter the server URL, username, and password to sync books, progress,
+  statistics, and audiobook progress to any WebDAV server.
 - Preserve deleted books' reading statistics, last reading position, and
   highlights in an archive, restore them on reimport, and edit daily records
   from book distribution rows. Single-day

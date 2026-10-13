@@ -21,7 +21,7 @@ fun Context.syncSettingsRepository(drive: DriveSyncDataSource): SyncSettingsRepo
 
 class SyncSettingsRepository(
     private val dataStore: DataStore<Preferences>,
-    private val drive: DriveSyncDataSource,
+    private val drive: DriveSyncDataSource? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     val settings: Flow<SyncSettings> = dataStore.data
@@ -35,7 +35,7 @@ class SyncSettingsRepository(
     }
 
     suspend fun clearGoogleDriveCache() = withContext(ioDispatcher) {
-        drive.clearCache()
+        drive?.clearCache()
     }
 
     private fun Preferences.toSyncSettings(): SyncSettings =
@@ -45,6 +45,10 @@ class SyncSettingsRepository(
             autoSyncEnabled = this[KEY_AUTO_SYNC_ENABLED] ?: false,
             authProvider = SyncAuthProvider.DeviceCode,
             uploadBooks = this[KEY_UPLOAD_BOOKS] ?: true,
+            provider = SyncProvider.fromRawValue(this[KEY_PROVIDER]),
+            webDavUrl = this[KEY_WEBDAV_URL] ?: "",
+            webDavUsername = this[KEY_WEBDAV_USERNAME] ?: "",
+            webDavPassword = this[KEY_WEBDAV_PASSWORD] ?: "",
         )
 
     private fun MutablePreferences.writeSyncSettings(settings: SyncSettings) {
@@ -53,6 +57,10 @@ class SyncSettingsRepository(
         this[KEY_AUTO_SYNC_ENABLED] = settings.autoSyncEnabled
         this[KEY_AUTH_PROVIDER] = settings.authProvider.name
         this[KEY_UPLOAD_BOOKS] = settings.uploadBooks
+        this[KEY_PROVIDER] = settings.provider.rawValue
+        this[KEY_WEBDAV_URL] = settings.webDavUrl
+        this[KEY_WEBDAV_USERNAME] = settings.webDavUsername
+        this[KEY_WEBDAV_PASSWORD] = settings.webDavPassword
     }
 
     companion object {
@@ -63,5 +71,9 @@ class SyncSettingsRepository(
         private val KEY_AUTO_SYNC_ENABLED = booleanPreferencesKey("autoSyncEnabled")
         private val KEY_AUTH_PROVIDER = stringPreferencesKey("syncAuthProvider")
         private val KEY_UPLOAD_BOOKS = booleanPreferencesKey("uploadBooks")
+        private val KEY_PROVIDER = stringPreferencesKey("syncProvider")
+        private val KEY_WEBDAV_URL = stringPreferencesKey("webDavUrl")
+        private val KEY_WEBDAV_USERNAME = stringPreferencesKey("webDavUsername")
+        private val KEY_WEBDAV_PASSWORD = stringPreferencesKey("webDavPassword")
     }
 }

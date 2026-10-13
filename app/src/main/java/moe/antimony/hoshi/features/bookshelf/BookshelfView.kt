@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -132,6 +133,8 @@ import moe.antimony.hoshi.features.sync.DriveAuthStatus
 import moe.antimony.hoshi.features.sync.SyncDirection
 import moe.antimony.hoshi.features.sync.SyncMode
 import moe.antimony.hoshi.features.sync.SyncSettings
+import moe.antimony.hoshi.features.sync.SyncProvider
+import moe.antimony.hoshi.features.sync.effectiveAuthStatus
 import moe.antimony.hoshi.importing.DirectoryImportContent
 import moe.antimony.hoshi.importing.ImportFileType
 import moe.antimony.hoshi.importing.MultipleFileImportContent
@@ -238,9 +241,9 @@ fun BookshelfView(
         booksViewModel.reloadBookEntries()
     }
 
-    LaunchedEffect(syncSettings.enabled, refreshKey) {
+    LaunchedEffect(syncSettings.enabled, syncSettings.provider, syncSettings.webDavUrl, refreshKey) {
         driveAuthStatus = if (syncSettings.enabled) {
-            appContainer.deviceCodeDriveAuthorizer.status()
+            syncSettings.effectiveAuthStatus(appContainer.deviceCodeDriveAuthorizer.status())
         } else {
             null
         }
@@ -754,7 +757,15 @@ internal fun shouldEnableBookshelfPullRefresh(
         !isSelecting &&
         !fileTaskBlocked
 
+@get:StringRes
+private val SyncProvider.sectionTitleRes: Int
+    get() = when (this) {
+        SyncProvider.GoogleDrive -> R.string.bookshelf_section_google_drive
+        SyncProvider.WebDav -> R.string.sync_provider_webdav
+    }
+
 private fun LazyGridScope.googleDriveSection(
+    provider: SyncProvider,
     remoteBookEntries: List<RemoteBookEntry>,
     remoteProgressById: Map<String, Double>,
     remoteImportProgressById: Map<String, Double>,
@@ -779,7 +790,7 @@ private fun LazyGridScope.googleDriveSection(
         span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
     ) {
         BookshelfSectionHeader(
-            title = stringResource(R.string.bookshelf_section_google_drive),
+            title = stringResource(provider.sectionTitleRes),
             count = remoteBookEntries.size,
             layoutSpec = layoutSpec,
             isCollapsible = presentation.isCollapsible,
@@ -993,6 +1004,7 @@ private fun BooksTab(
                         visibleSections.forEachIndexed { sectionIndex, section ->
                             if (sectionIndex == googleDriveIndex) {
                                 googleDriveSection(
+                                    provider = syncSettings.provider,
                                     remoteBookEntries = remoteBookEntries,
                                     remoteProgressById = remoteProgressById,
                                     remoteImportProgressById = remoteImportProgressById,
@@ -1107,6 +1119,7 @@ private fun BooksTab(
                         }
                         if (googleDriveIndex == visibleSections.size) {
                             googleDriveSection(
+                                provider = syncSettings.provider,
                                 remoteBookEntries = remoteBookEntries,
                                 remoteProgressById = remoteProgressById,
                                 remoteImportProgressById = remoteImportProgressById,

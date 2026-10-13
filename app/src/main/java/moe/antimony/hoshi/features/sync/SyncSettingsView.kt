@@ -105,11 +105,18 @@ fun SyncSettingsView(
     var pollIntervalSeconds by remember { mutableStateOf(5L) }
     var showSignOutConfirmation by remember { mutableStateOf(false) }
     var showClearCacheConfirmation by remember { mutableStateOf(false) }
-    val screenState = SyncSettingsScreenState(settings = settings, authStatus = authStatus)
+    var providerMenuExpanded by remember { mutableStateOf(false) }
+    val provider = settings?.provider ?: SyncProvider.GoogleDrive
+    val effectiveAuthStatus: DriveAuthStatus? = if (provider == SyncProvider.WebDav) {
+        if (!settings?.webDavUrl.isNullOrBlank()) DriveAuthStatus.Connected else DriveAuthStatus.NotConnected
+    } else {
+        authStatus
+    }
+    val screenState = SyncSettingsScreenState(settings = settings, authStatus = effectiveAuthStatus)
     val currentSettings = settings
     val currentReaderSettings = readerSettings
     val currentSasayakiSettings = sasayakiSettings
-    val currentAuthStatus = authStatus
+    val currentAuthStatus = effectiveAuthStatus
     val connectionActions = currentAuthStatus?.let { syncConnectionActions(it, isAuthorizing) }
 
     fun save(next: SyncSettings) {
@@ -344,6 +351,33 @@ fun SyncSettingsView(
                             },
                         )
                     }
+                    SettingsCard {
+                        ListItem(
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            headlineContent = { Text(stringResource(R.string.sync_provider)) },
+                            trailingContent = {
+                                Box {
+                                    TextButton(onClick = { providerMenuExpanded = true }) {
+                                        Text(stringResource(currentSettings.provider.labelRes))
+                                    }
+                                    DropdownMenu(
+                                        expanded = providerMenuExpanded,
+                                        onDismissRequest = { providerMenuExpanded = false },
+                                    ) {
+                                        SyncProvider.entries.forEach { entry ->
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(entry.labelRes)) },
+                                                onClick = {
+                                                    providerMenuExpanded = false
+                                                    save(currentSettings.copy(provider = entry))
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                    }
                     if (currentSettings.enabled) {
                         SettingsSectionTitle(stringResource(R.string.sync_section_behaviour))
                         SettingsCard {
@@ -429,41 +463,50 @@ fun SyncSettingsView(
                 if (!screenState.isContentReady || currentAuthStatus == null) {
                     return@item
                 }
-                SettingsCard {
-                    ListItem(
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        headlineContent = { Text(stringResource(R.string.sync_google_drive)) },
-                        supportingContent = { Text(currentAuthStatus.labelText()) },
+                if (provider == SyncProvider.WebDav) {
+                    val settingsValue = currentSettings ?: return@item
+                    WebDavSettingsCard(
+                        settings = settingsValue,
+                        onSettingsChange = ::save,
+                        statusText = currentAuthStatus.labelText(),
                     )
-                    SettingsDivider()
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        val clientIdScrollState = rememberScrollState()
-                        val clientIdState = rememberSyncedTextFieldState(
-                            value = clientId,
-                            onValueChange = { clientId = it },
-                            scrollState = clientIdScrollState,
+                } else {
+                    SettingsCard {
+                        ListItem(
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            headlineContent = { Text(stringResource(R.string.sync_google_drive)) },
+                            supportingContent = { Text(currentAuthStatus.labelText()) },
                         )
-                        val clientSecretState = rememberSyncedTextFieldState(
-                            value = clientSecret,
-                            onValueChange = { clientSecret = it },
-                        )
-                        OutlinedTextField(
-                            state = clientIdState,
-                            label = { Text(stringResource(R.string.sync_device_client_id)) },
-                            lineLimits = hoshiSingleLineTextFieldLineLimits(),
-                            scrollState = clientIdScrollState,
-                            colors = hoshiOutlinedTextFieldColors(),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedSecureTextField(
-                            state = clientSecretState,
-                            label = { Text(stringResource(R.string.sync_device_client_secret)) },
-                            colors = hoshiOutlinedTextFieldColors(),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        SettingsDivider()
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            val clientIdScrollState = rememberScrollState()
+                            val clientIdState = rememberSyncedTextFieldState(
+                                value = clientId,
+                                onValueChange = { clientId = it },
+                                scrollState = clientIdScrollState,
+                            )
+                            val clientSecretState = rememberSyncedTextFieldState(
+                                value = clientSecret,
+                                onValueChange = { clientSecret = it },
+                            )
+                            OutlinedTextField(
+                                state = clientIdState,
+                                label = { Text(stringResource(R.string.sync_device_client_id)) },
+                                lineLimits = hoshiSingleLineTextFieldLineLimits(),
+                                scrollState = clientIdScrollState,
+                                colors = hoshiOutlinedTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            OutlinedSecureTextField(
+                                state = clientSecretState,
+                                label = { Text(stringResource(R.string.sync_device_client_secret)) },
+                                colors = hoshiOutlinedTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
                 devicePrompt?.let { prompt ->
@@ -528,8 +571,9 @@ fun SyncSettingsView(
                 if (!screenState.isContentReady || connectionActions == null) {
                     return@item
                 }
+                val settingsValue = currentSettings ?: return@item
                 Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    if (connectionActions.showConnect) {
+                    if (provider == SyncProvider.GoogleDrive && connectionActions.showConnect) {
                         Button(
                             onClick = ::connectGoogleDrive,
                             enabled = connectionActions.connectEnabled,
@@ -538,10 +582,28 @@ fun SyncSettingsView(
                             Text(stringResource(R.string.sync_connect_google_drive))
                         }
                     }
-                    if (connectionActions.showSignOut) {
+                    if (provider == SyncProvider.WebDav) {
+                        if (!settingsValue.enabled || settingsValue.webDavUrl.isBlank()) {
+                            Text(
+                                text = stringResource(R.string.sync_webdav_url_missing),
+                                color = colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                    }
+                    if (provider == SyncProvider.GoogleDrive && connectionActions.showSignOut) {
                         OutlinedButton(
                             onClick = { showSignOutConfirmation = true },
                             enabled = connectionActions.signOutEnabled,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.action_sign_out))
+                        }
+                    }
+                    if (provider == SyncProvider.WebDav && settingsValue.webDavUrl.isNotBlank()) {
+                        OutlinedButton(
+                            onClick = { save(settingsValue.copy(webDavUrl = "", webDavUsername = "", webDavPassword = "")) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(stringResource(R.string.action_sign_out))
@@ -555,7 +617,9 @@ fun SyncSettingsView(
                             Text(stringResource(R.string.sync_clear_cache))
                         }
                     }
-                    GoogleCloudOAuthSetupCard()
+                    if (provider == SyncProvider.GoogleDrive) {
+                        GoogleCloudOAuthSetupCard()
+                    }
                 }
             }
         }
@@ -711,6 +775,75 @@ private fun DriveAuthStatus.labelText(): String =
         DriveAuthStatus.NotConnected -> stringResource(R.string.sync_status_not_connected)
         DriveAuthStatus.MissingConfiguration -> stringResource(R.string.sync_status_missing_configuration)
         is DriveAuthStatus.Failed -> message
+    }
+
+@Composable
+private fun WebDavSettingsCard(
+    settings: SyncSettings,
+    onSettingsChange: (SyncSettings) -> Unit,
+    statusText: String,
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    SettingsCard {
+        ListItem(
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            headlineContent = { Text(stringResource(R.string.sync_provider_webdav)) },
+            supportingContent = { Text(statusText) },
+        )
+        SettingsDivider()
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.sync_webdav_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onSurfaceVariant,
+            )
+            val urlScrollState = rememberScrollState()
+            val urlState = rememberSyncedTextFieldState(
+                value = settings.webDavUrl,
+                onValueChange = { onSettingsChange(settings.copy(webDavUrl = it)) },
+                scrollState = urlScrollState,
+            )
+            val usernameState = rememberSyncedTextFieldState(
+                value = settings.webDavUsername,
+                onValueChange = { onSettingsChange(settings.copy(webDavUsername = it)) },
+            )
+            val passwordState = rememberSyncedTextFieldState(
+                value = settings.webDavPassword,
+                onValueChange = { onSettingsChange(settings.copy(webDavPassword = it)) },
+            )
+            OutlinedTextField(
+                state = urlState,
+                label = { Text(stringResource(R.string.sync_webdav_url)) },
+                lineLimits = hoshiSingleLineTextFieldLineLimits(),
+                scrollState = urlScrollState,
+                colors = hoshiOutlinedTextFieldColors(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                state = usernameState,
+                label = { Text(stringResource(R.string.sync_webdav_username)) },
+                lineLimits = hoshiSingleLineTextFieldLineLimits(),
+                colors = hoshiOutlinedTextFieldColors(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedSecureTextField(
+                state = passwordState,
+                label = { Text(stringResource(R.string.sync_webdav_password)) },
+                colors = hoshiOutlinedTextFieldColors(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@get:StringRes
+private val SyncProvider.labelRes: Int
+    get() = when (this) {
+        SyncProvider.GoogleDrive -> R.string.sync_google_drive
+        SyncProvider.WebDav -> R.string.sync_provider_webdav
     }
 
 @get:StringRes

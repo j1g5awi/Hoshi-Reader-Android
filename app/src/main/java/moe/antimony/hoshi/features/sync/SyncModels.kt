@@ -22,6 +22,16 @@ enum class SyncAuthProvider {
     DeviceCode,
 }
 
+enum class SyncProvider(val rawValue: String) {
+    GoogleDrive("GoogleDrive"),
+    WebDav("WebDav");
+
+    companion object {
+        fun fromRawValue(rawValue: String?): SyncProvider =
+            entries.firstOrNull { it.rawValue == rawValue } ?: GoogleDrive
+    }
+}
+
 enum class StatisticsSyncMode(val rawValue: String) {
     Merge("Merge"),
     Replace("Replace");
@@ -38,6 +48,10 @@ data class SyncSettings(
     val autoSyncEnabled: Boolean = false,
     val authProvider: SyncAuthProvider = SyncAuthProvider.DeviceCode,
     val uploadBooks: Boolean = true,
+    val provider: SyncProvider = SyncProvider.GoogleDrive,
+    val webDavUrl: String = "",
+    val webDavUsername: String = "",
+    val webDavPassword: String = "",
 )
 
 sealed interface DriveAuthStatus {
@@ -118,3 +132,11 @@ internal fun shouldAttemptDriveRequest(
     @Suppress("UNUSED_PARAMETER") hasValidatedCapability: Boolean,
 ): Boolean =
     hasActiveNetwork && hasInternetCapability
+
+/** Resolves the sync connection state, deriving WebDAV status from its configured URL. */
+fun SyncSettings.effectiveAuthStatus(driveStatus: DriveAuthStatus): DriveAuthStatus =
+    when (provider) {
+        SyncProvider.GoogleDrive -> driveStatus
+        SyncProvider.WebDav ->
+            if (webDavUrl.isNotBlank()) DriveAuthStatus.Connected else DriveAuthStatus.NotConnected
+    }

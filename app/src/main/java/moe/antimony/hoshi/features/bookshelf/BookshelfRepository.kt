@@ -37,6 +37,7 @@ import moe.antimony.hoshi.features.sync.TtuBookDataConverter
 import moe.antimony.hoshi.features.sync.TtuProgress
 import moe.antimony.hoshi.features.sync.TtuSyncRules
 import moe.antimony.hoshi.features.sync.TtuAudioBook
+import moe.antimony.hoshi.features.sync.effectiveAuthStatus
 import moe.antimony.hoshi.features.sync.googleDriveCoverCacheDirectory
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -350,7 +351,7 @@ internal class AndroidBookshelfRepository @Inject constructor(
 
     private suspend fun loadRemoteBookEntries(localEntries: List<BookEntry>): List<RemoteBookEntry> {
         val syncSettings = syncSettingsRepository.settings.first()
-        val authStatus = driveAuthorizer.status()
+        val authStatus = syncSettings.effectiveAuthStatus(driveAuthorizer.status())
         if (!shouldLoadRemoteBooks(syncSettings, authStatus)) return emptyList()
         val localDriveNames = localEntries.mapTo(mutableSetOf()) { entry ->
             TtuSyncRules.sanitizeTtuFilename(entry.metadata.title ?: entry.displayTitle)

@@ -430,6 +430,14 @@
     <string name="sync_title">同步</string>
     <string name="sync_section_behaviour" comment="Sync settings group label, intentionally matching other settings group labels.">行为</string>
     <string name="sync_section_data">数据</string>
+    <string name="sync_section_provider">服务提供方</string>
+    <string name="sync_provider">同步方式</string>
+    <string name="sync_provider_webdav">WebDAV</string>
+    <string name="sync_webdav_url">服务器地址</string>
+    <string name="sync_webdav_username">用户名</string>
+    <string name="sync_webdav_password">密码</string>
+    <string name="sync_webdav_description">同步到任意 WebDAV 服务器（Nextcloud、ownCloud、群晖等）。书籍将存放在所填地址下。</string>
+    <string name="sync_webdav_url_missing">请输入 WebDAV 服务器地址后才能同步。</string>
     <string name="sync_direction">方向</string>
     <string name="sync_auto_sync">自动同步</string>
     <string name="sync_upload_books">上传书籍</string>
