@@ -373,6 +373,27 @@ internal fun ChapterWebView(
                     }
                 }
             }
+            fun navigatePageForReaderTap(tapSide: ReaderTapSide) {
+                currentOnReaderInteraction.value()
+                currentOnClearLookupPopup.value()
+                currentOnNavigatePage.value(
+                    readerNavigationDirectionForTap(
+                        isVerticalWriting = readerSettings.verticalWriting,
+                        tapSide = tapSide,
+                    ),
+                )
+            }
+            fun readerTapZoneAction(x: Float, viewWidth: Int, onBlankTap: () -> Unit) {
+                if (currentReaderPopupFrames.value.isNotEmpty() || !readerSettings.tapZonesToTurnPages) {
+                    onBlankTap()
+                    return
+                }
+                when {
+                    x < viewWidth / 4f -> navigatePageForReaderTap(ReaderTapSide.Left)
+                    x > 3f * viewWidth / 4f -> navigatePageForReaderTap(ReaderTapSide.Right)
+                    else -> onBlankTap()
+                }
+            }
             fun shouldIgnoreReaderGestureEvent(event: MotionEvent): Boolean {
                 if (currentIsWebViewRestoring.value || webView.isNativeSelectionActive()) {
                     return true
@@ -390,7 +411,7 @@ internal fun ChapterWebView(
                         ContinuousScrollTouchListener(
                             settings = readerSettings,
                             shouldIgnoreReaderGesture = ::shouldIgnoreReaderGestureEvent,
-                            onTap = { x, y -> selectAt(x, y) { currentOnReaderTapOutside.value() } },
+                            onTap = { x, y -> selectAt(x, y) { readerTapZoneAction(x, webView.width) { currentOnReaderTapOutside.value() } } },
                             onScrollGesture = { currentOnReaderInteraction.value() },
                             onNextChapter = {
                                 currentOnReaderInteraction.value()
@@ -469,12 +490,14 @@ internal fun ChapterWebView(
 
                             override fun onTap(x: Float, y: Float) {
                                 selectAt(x, y) {
-                                    if (readerSettings.viewMode == ReaderViewMode.Paginated && readerSettings.paragraphMode && readerSettings.paragraphClickAdvance) {
-                                        currentOnReaderInteraction.value()
-                                        currentOnClearLookupPopup.value()
-                                        currentOnNavigatePage.value(ReaderNavigationDirection.Forward)
-                                    } else {
-                                        currentOnReaderTapOutside.value()
+                                    readerTapZoneAction(x, webView.width) {
+                                        if (readerSettings.viewMode == ReaderViewMode.Paginated && readerSettings.paragraphMode && readerSettings.paragraphClickAdvance) {
+                                            currentOnReaderInteraction.value()
+                                            currentOnClearLookupPopup.value()
+                                            currentOnNavigatePage.value(ReaderNavigationDirection.Forward)
+                                        } else {
+                                            currentOnReaderTapOutside.value()
+                                        }
                                     }
                                 }
                             }
@@ -484,6 +507,7 @@ internal fun ChapterWebView(
                                 currentOnClearLookupPopup.value()
                                 val direction = readerNavigationDirectionForSwipe(
                                     isVerticalWriting = readerSettings.verticalWriting,
+                                    reverseDirection = readerSettings.reverseSwipeDirection,
                                     swipeDirection = ReaderSwipeDirection.Left,
                                 )
                                 currentOnNavigatePage.value(direction)
@@ -494,6 +518,7 @@ internal fun ChapterWebView(
                                 currentOnClearLookupPopup.value()
                                 val direction = readerNavigationDirectionForSwipe(
                                     isVerticalWriting = readerSettings.verticalWriting,
+                                    reverseDirection = readerSettings.reverseSwipeDirection,
                                     swipeDirection = ReaderSwipeDirection.Right,
                                 )
                                 currentOnNavigatePage.value(direction)

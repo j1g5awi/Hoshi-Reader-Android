@@ -10,9 +10,11 @@ class ReaderBehaviorSasayakiTest {
         assertEquals(
             listOf(
                 R.string.reader_behavior_volume_keys_turn_pages,
+                R.string.reader_behavior_tap_zones_to_turn_pages,
                 R.string.reader_behavior_volume_keys_navigate_popup_terms,
                 R.string.reader_behavior_volume_keys_seek_sasayaki,
                 R.string.reader_behavior_reverse_volume_key_direction,
+                R.string.reader_behavior_reverse_swipe_direction,
                 R.string.reader_behavior_exit_reader_on_first_back,
                 R.string.reader_behavior_keep_screen_on,
                 R.string.reader_behavior_lock_current_orientation,

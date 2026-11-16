@@ -65,6 +65,14 @@ fun ReaderBehaviorScreen(
                     )
                     BehaviorDivider()
                     BehaviorSwitchRow(
+                        label = stringResource(ReaderBehaviorRow.TapZonesToTurnPages.labelRes),
+                        checked = settings.tapZonesToTurnPages,
+                        onCheckedChange = {
+                            onSettingsChange { current -> current.copy(tapZonesToTurnPages = it) }
+                        },
+                    )
+                    BehaviorDivider()
+                    BehaviorSwitchRow(
                         label = stringResource(ReaderBehaviorRow.VolumeKeysNavigatePopupTerms.labelRes),
                         checked = settings.volumeKeysNavigatePopupTerms,
                         onCheckedChange = {
@@ -87,6 +95,14 @@ fun ReaderBehaviorScreen(
                         checked = settings.reverseVolumeKeyDirection,
                         onCheckedChange = {
                             onSettingsChange { current -> current.copy(reverseVolumeKeyDirection = it) }
+                        },
+                    )
+                    BehaviorDivider()
+                    BehaviorSwitchRow(
+                        label = stringResource(ReaderBehaviorRow.ReverseSwipeDirection.labelRes),
+                        checked = settings.reverseSwipeDirection,
+                        onCheckedChange = {
+                            onSettingsChange { current -> current.copy(reverseSwipeDirection = it) }
                         },
                     )
                     BehaviorDivider()
@@ -152,9 +168,11 @@ internal fun readerBehaviorRows(): List<Int> = ReaderBehaviorRow.entries.map { i
 
 private enum class ReaderBehaviorRow(val labelRes: Int) {
     VolumeKeysTurnPages(R.string.reader_behavior_volume_keys_turn_pages),
+    TapZonesToTurnPages(R.string.reader_behavior_tap_zones_to_turn_pages),
     VolumeKeysNavigatePopupTerms(R.string.reader_behavior_volume_keys_navigate_popup_terms),
     VolumeKeysSeekSasayaki(R.string.reader_behavior_volume_keys_seek_sasayaki),
     ReverseVolumeKeyDirection(R.string.reader_behavior_reverse_volume_key_direction),
+    ReverseSwipeDirection(R.string.reader_behavior_reverse_swipe_direction),
     ExitReaderOnFirstBack(R.string.reader_behavior_exit_reader_on_first_back),
     KeepScreenOn(R.string.reader_behavior_keep_screen_on),
     LockCurrentOrientation(R.string.reader_behavior_lock_current_orientation),
