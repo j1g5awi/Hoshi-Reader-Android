@@ -12,8 +12,21 @@ val rustProjectDir = file("src/main/rust/hoshiepub")
 val uniffiOutDir = layout.buildDirectory.dir("generated/source/uniffi/main/kotlin").get().asFile
 val rustDebugJniLibsDir = layout.buildDirectory.dir("jniLibs/debug").get().asFile
 val rustReleaseJniLibsDir = layout.buildDirectory.dir("jniLibs/release").get().asFile
-val cargo = System.getenv("HOME") + "/.cargo/bin/cargo"
-val androidNdkHome = System.getenv("ANDROID_NDK_HOME") ?: "/opt/homebrew/share/android-ndk"
+val cargo = file(System.getenv("HOME") ?: System.getenv("USERPROFILE") ?: System.getProperty("user.home"))
+    .resolve(".cargo/bin/cargo").absolutePath
+val androidNdkHome = System.getenv("ANDROID_NDK_HOME") ?: run {
+    val ndkVersion = "29.0.14206865"
+    val sdkDir = sequenceOf(
+        rootProject.file("local.properties").takeIf { it.exists() }?.useLines { lines ->
+            lines.firstOrNull { it.startsWith("sdk.dir=") }?.substringAfter("sdk.dir=")?.replace("\\", "/")
+        },
+        System.getenv("LOCALAPPDATA")?.let { "$it/Android/Sdk" },
+        System.getenv("ANDROID_SDK_ROOT"),
+        System.getenv("ANDROID_HOME"),
+    ).filterNotNull().firstOrNull { file("$it/ndk/$ndkVersion").exists() }
+        ?.let { file("$it/ndk/$ndkVersion").absolutePath }
+    sdkDir ?: "/opt/homebrew/share/android-ndk"
+}
 val secrets = Properties().apply {
     val secretsFile = rootProject.file("secrets.properties")
     if (secretsFile.isFile) secretsFile.inputStream().use { load(it) }
@@ -65,6 +78,7 @@ val hostLibExtension = when {
     System.getProperty("os.name").lowercase().contains("win") -> "dll"
     else -> "so"
 }
+val hostLibPrefix = if (System.getProperty("os.name").lowercase().contains("win")) "" else "lib"
 
 android {
     namespace = "moe.antimony.hoshi"
@@ -225,7 +239,7 @@ val buildRustHost by tasks.registering(Exec::class) {
         rustProjectDir.resolve("uniffi.toml"),
     )
     inputs.dir(rustProjectDir.resolve("src"))
-    outputs.file(rustProjectDir.resolve("target/debug/libhoshiepub.$hostLibExtension"))
+    outputs.file(rustProjectDir.resolve("target/debug/${hostLibPrefix}hoshiepub.$hostLibExtension"))
 
     commandLine(cargo, "build", "--lib")
 }
@@ -234,7 +248,7 @@ val generateUniffiKotlin by tasks.registering(Exec::class) {
     dependsOn(buildRustHost)
     workingDir = rustProjectDir
 
-    val hostLibPath = rustProjectDir.resolve("target/debug/libhoshiepub.$hostLibExtension")
+    val hostLibPath = rustProjectDir.resolve("target/debug/${hostLibPrefix}hoshiepub.$hostLibExtension")
 
     inputs.file(hostLibPath)
     inputs.file(rustProjectDir.resolve("uniffi.toml"))
