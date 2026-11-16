@@ -12,7 +12,7 @@ internal data class ReaderRouteAutoSyncState(
         get() = syncSettings != null && sasayakiSettings != null
 
     val isReaderAutoSyncEnabled: Boolean
-        get() = syncSettings?.enabled == true && syncSettings.provider == SyncProvider.Ttu && syncSettings.autoSyncEnabled
+        get() = syncSettings?.enabled == true && syncSettings.provider.usesTtuLayout && syncSettings.autoSyncEnabled
 
     val shouldSyncOnOpen: Boolean
         get() = isReaderAutoSyncEnabled

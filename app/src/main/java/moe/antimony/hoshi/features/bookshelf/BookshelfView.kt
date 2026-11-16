@@ -1700,8 +1700,8 @@ internal fun BookContextMenu(
         expanded = expanded && !moveMenuExpanded && !syncMenuExpanded && !profileMenuExpanded && !markMenuExpanded,
         onDismissRequest = onDismiss,
     ) {
-        if (syncSettings.enabled && (syncSettings.provider == SyncProvider.Ttu || entry.metadata.epub == null)) {
-            if (syncSettings.provider == SyncProvider.Ttu && syncSettings.mode == SyncMode.Manual) {
+        if (syncSettings.enabled && (syncSettings.provider.usesTtuLayout || entry.metadata.epub == null)) {
+            if (syncSettings.provider.usesTtuLayout && syncSettings.mode == SyncMode.Manual) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.bookshelf_sync)) },
                     trailingIcon = {
@@ -1712,7 +1712,7 @@ internal fun BookContextMenu(
                     },
                     onClick = { syncMenuExpanded = true },
                 )
-            } else if (syncSettings.provider == SyncProvider.Ttu) {
+            } else if (syncSettings.provider.usesTtuLayout) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.bookshelf_sync)) },
                     onClick = {

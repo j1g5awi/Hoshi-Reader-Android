@@ -57,6 +57,11 @@ data class Timestamped<T>(val modified: Long, val value: T) {
 enum class SyncProvider(val rawValue: String) {
     Gdrive("gdrive"),
     Ttu("ttu"),
+    WebDav("webdav"),
+    ;
+
+    /** True when the provider stores data using the TTU file layout. */
+    val usesTtuLayout: Boolean get() = this != Gdrive
 }
 
 @Serializable

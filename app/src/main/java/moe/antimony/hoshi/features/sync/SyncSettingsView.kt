@@ -233,7 +233,7 @@ fun SyncSettingsView(
         }
     }
 
-    LaunchedEffect(settings?.provider) {
+    LaunchedEffect(settings?.provider, settings?.webDavUrl) {
         settings?.let { authStatus = googleAuth.status(it.provider) }
         message = null
         devicePrompt = null
@@ -531,7 +531,7 @@ fun SyncSettingsView(
                         color = colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
-                    if (currentSettings.enabled && currentSettings.provider == SyncProvider.Ttu && currentAuthStatus == DriveAuthStatus.Connected) {
+                    if (currentSettings.enabled && currentSettings.provider.usesTtuLayout && currentAuthStatus == DriveAuthStatus.Connected) {
                         SettingsSectionTitle(stringResource(R.string.sync_section_behaviour))
                         SettingsCard {
                             ListItem(
@@ -686,6 +686,54 @@ fun SyncSettingsView(
                             )
                         }
                     }
+                    if (currentSettings.provider == SyncProvider.WebDav) {
+                        SettingsDivider()
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.sync_webdav_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colorScheme.onSurfaceVariant,
+                            )
+                            val webDavUrlScrollState = rememberScrollState()
+                            val webDavUrlState = rememberSyncedTextFieldState(
+                                value = currentSettings.webDavUrl,
+                                onValueChange = { save(currentSettings.copy(webDavUrl = it)) },
+                                scrollState = webDavUrlScrollState,
+                            )
+                            val webDavUsernameState = rememberSyncedTextFieldState(
+                                value = currentSettings.webDavUsername,
+                                onValueChange = { save(currentSettings.copy(webDavUsername = it)) },
+                            )
+                            val webDavPasswordState = rememberSyncedTextFieldState(
+                                value = currentSettings.webDavPassword,
+                                onValueChange = { save(currentSettings.copy(webDavPassword = it)) },
+                            )
+                            OutlinedTextField(
+                                state = webDavUrlState,
+                                label = { Text(stringResource(R.string.sync_webdav_url)) },
+                                lineLimits = hoshiSingleLineTextFieldLineLimits(),
+                                scrollState = webDavUrlScrollState,
+                                colors = hoshiOutlinedTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            OutlinedTextField(
+                                state = webDavUsernameState,
+                                label = { Text(stringResource(R.string.sync_webdav_username)) },
+                                lineLimits = hoshiSingleLineTextFieldLineLimits(),
+                                colors = hoshiOutlinedTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            OutlinedSecureTextField(
+                                state = webDavPasswordState,
+                                label = { Text(stringResource(R.string.sync_webdav_password)) },
+                                colors = hoshiOutlinedTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
                 devicePrompt?.let { prompt ->
                     SettingsCard {
@@ -804,7 +852,7 @@ fun SyncSettingsView(
                     return@item
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    if (connectionActions.showConnect) {
+                    if (currentSettings.provider != SyncProvider.WebDav && connectionActions.showConnect) {
                         Button(
                             onClick = ::connectGoogleDrive,
                             enabled = connectionActions.connectEnabled,
@@ -813,13 +861,32 @@ fun SyncSettingsView(
                             Text(stringResource(if (currentAuthStatus == DriveAuthStatus.RecoveryRequired) R.string.sync_restore_google_drive_authorization else R.string.sync_connect_google_drive))
                         }
                     }
-                    if (connectionActions.showSignOut) {
+                    if (currentSettings.provider != SyncProvider.WebDav && connectionActions.showSignOut) {
                         OutlinedButton(
                             onClick = { showSignOutConfirmation = true },
                             enabled = connectionActions.signOutEnabled,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(stringResource(R.string.action_sign_out))
+                        }
+                    }
+                    if (currentSettings.provider == SyncProvider.WebDav) {
+                        if (currentSettings.webDavUrl.isBlank()) {
+                            Text(
+                                text = stringResource(R.string.sync_webdav_url_missing),
+                                color = colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    save(currentSettings.copy(webDavUrl = "", webDavUsername = "", webDavPassword = ""))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.action_sign_out))
+                            }
                         }
                     }
                     if (screenState.showClearCacheAction) {
@@ -1053,6 +1120,7 @@ private val SyncProvider.labelRes: Int
     get() = when (this) {
         SyncProvider.Gdrive -> R.string.sync_google_drive
         SyncProvider.Ttu -> R.string.sync_provider_ttu
+        SyncProvider.WebDav -> R.string.sync_provider_webdav
     }
 
 @get:StringRes

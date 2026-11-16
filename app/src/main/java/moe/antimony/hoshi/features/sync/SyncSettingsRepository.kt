@@ -55,6 +55,9 @@ class SyncSettingsRepository(
             authProvider = SyncAuthProvider.DeviceCode,
             uploadBooks = this[KEY_UPLOAD_BOOKS] ?: true,
             transferConcurrency = (this[KEY_TRANSFER_CONCURRENCY] ?: SyncSettings.DefaultTransferConcurrency).coerceIn(1, 8),
+            webDavUrl = this[KEY_WEBDAV_URL] ?: "",
+            webDavUsername = this[KEY_WEBDAV_USERNAME] ?: "",
+            webDavPassword = this[KEY_WEBDAV_PASSWORD] ?: "",
         )
 
     private fun MutablePreferences.writeSyncSettings(settings: SyncSettings) {
@@ -65,6 +68,9 @@ class SyncSettingsRepository(
         this[KEY_AUTH_PROVIDER] = settings.authProvider.name
         this[KEY_UPLOAD_BOOKS] = settings.uploadBooks
         this[KEY_TRANSFER_CONCURRENCY] = settings.transferConcurrency.coerceIn(1, 8)
+        this[KEY_WEBDAV_URL] = settings.webDavUrl
+        this[KEY_WEBDAV_USERNAME] = settings.webDavUsername
+        this[KEY_WEBDAV_PASSWORD] = settings.webDavPassword
     }
 
     companion object {
@@ -77,5 +83,8 @@ class SyncSettingsRepository(
         private val KEY_AUTH_PROVIDER = stringPreferencesKey("syncAuthProvider")
         private val KEY_TRANSFER_CONCURRENCY = intPreferencesKey("transferConcurrency")
         private val KEY_UPLOAD_BOOKS = booleanPreferencesKey("uploadBooks")
+        private val KEY_WEBDAV_URL = stringPreferencesKey("webDavUrl")
+        private val KEY_WEBDAV_USERNAME = stringPreferencesKey("webDavUsername")
+        private val KEY_WEBDAV_PASSWORD = stringPreferencesKey("webDavPassword")
     }
 }

@@ -40,6 +40,9 @@ data class SyncSettings(
     val authProvider: SyncAuthProvider = SyncAuthProvider.DeviceCode,
     val uploadBooks: Boolean = true,
     val transferConcurrency: Int = DefaultTransferConcurrency,
+    val webDavUrl: String = "",
+    val webDavUsername: String = "",
+    val webDavPassword: String = "",
 ) {
     companion object {
         const val DefaultTransferConcurrency = 8

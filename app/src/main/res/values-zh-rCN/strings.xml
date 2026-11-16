@@ -918,6 +918,12 @@
     <string name="statistics_sessions_heading">阅读记录</string>
     <string name="sync_provider">同步服务</string>
     <string name="sync_provider_ttu">ッツ/yatsu</string>
+    <string name="sync_provider_webdav">WebDAV</string>
+    <string name="sync_webdav_url">服务器地址</string>
+    <string name="sync_webdav_username">用户名</string>
+    <string name="sync_webdav_password">密码</string>
+    <string name="sync_webdav_description">同步到任意 WebDAV 服务器（Nextcloud、ownCloud、群晖等）。书籍将存放在所填地址下。</string>
+    <string name="sync_webdav_url_missing">请输入 WebDAV 服务器地址后才能同步。</string>
     <string name="sync_hoshi_description">在 Hoshi Reader 设备之间同步书库。</string>
     <string name="sync_unsupported_format">此书库使用不支持的同步格式。请更新 Hoshi Reader 后再同步。</string>
     <string name="sync_book_deleted">此书籍已被删除。</string>

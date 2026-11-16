@@ -127,6 +127,9 @@ class GoogleDriveAuth @Inject constructor(
 
     suspend fun status(provider: SyncProvider): DriveAuthStatus = when (provider) {
         SyncProvider.Ttu -> ttu.status()
+        SyncProvider.WebDav ->
+            if (settings.get().settings.first().webDavUrl.isNotBlank()) DriveAuthStatus.Connected
+            else DriveAuthStatus.NotConnected
         SyncProvider.Gdrive -> {
             val browserStatus = browser.status()
             if (browserStatus == DriveAuthStatus.Connected || usesBrowserAuthorization()) browserStatus
@@ -135,6 +138,7 @@ class GoogleDriveAuth @Inject constructor(
     }
 
     override suspend fun accessToken(): String {
+        if (provider() == SyncProvider.WebDav) return ""
         if (provider() == SyncProvider.Ttu) return ttu.accessToken()
         if (browser.status() == DriveAuthStatus.Connected) return browser.accessToken()
         val snapshot = authorizationContext()
@@ -148,6 +152,7 @@ class GoogleDriveAuth @Inject constructor(
     }
 
     override suspend fun clearAccessToken(token: String) {
+        if (provider() == SyncProvider.WebDav) return
         if (provider() == SyncProvider.Gdrive) {
             ErrorDiagnosticEvents.buffer.recordServiceFailure(
                 UiText.Resource(R.string.sync_connect_google_drive),
@@ -161,6 +166,7 @@ class GoogleDriveAuth @Inject constructor(
     }
 
     override suspend fun revokeAccess() {
+        if (provider() == SyncProvider.WebDav) return
         if (provider() == SyncProvider.Ttu) ttu.revokeAccess() else clearHoshiLogin()
     }
 

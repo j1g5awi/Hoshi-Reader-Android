@@ -494,7 +494,7 @@ private val remoteJson = Json {
 }
 
 internal fun shouldLoadRemoteBooks(syncSettings: moe.antimony.hoshi.features.sync.SyncSettings, authStatus: DriveAuthStatus): Boolean =
-    syncSettings.enabled && syncSettings.provider == SyncProvider.Ttu && authStatus is DriveAuthStatus.Connected
+    syncSettings.enabled && syncSettings.provider.usesTtuLayout && authStatus is DriveAuthStatus.Connected
 
 internal suspend fun loadRemoteBooksOnce(
     drive: DriveSyncDataSource,
