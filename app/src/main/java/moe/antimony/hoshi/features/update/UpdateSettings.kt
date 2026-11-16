@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 data class UpdateSettings(
-    val autoCheckUpdates: Boolean = true,
+    val autoCheckUpdates: Boolean = false,
 )
 
 private val Context.updateSettingsDataStore by preferencesDataStore(name = "update-settings")
